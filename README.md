@@ -1,2 +1,2 @@
-# go-longpolling
+# golongpoll
 golang HTTP longpolling library
