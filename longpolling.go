@@ -1,4 +1,4 @@
-package main
+package longpolling
 
 import (
     "container/list"
