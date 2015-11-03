@@ -12,7 +12,7 @@ func millisecondStringToTime(ms string) (time.Time, error) {
 	if err != nil {
 		return time.Time{}, err
 	}
-	return time.Unix(0, msInt*int64(time.Millisecond)), nil
+	return time.Unix(0, msInt*int64(time.Millisecond)).In(time.UTC), nil
 }
 
 // adapted from:
