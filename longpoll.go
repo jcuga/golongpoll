@@ -14,6 +14,11 @@ import (
 	"github.com/nu7hatch/gouuid"
 )
 
+// TODO: reconsider how to expose interface/interaction with manager
+// TODO: expose way to shut manager down
+// TODO: flag/setting as to whether or not we log
+// TOOD: buffer size option, internal chan size option?
+
 // Expose event channel type:
 type EventChannel chan Event
 
@@ -39,9 +44,9 @@ func StartLongpollManager() (chan Event, func(w http.ResponseWriter, r *http.Req
 		ClientTimeouts:      clientTimeoutChan,
 		Events:              events,
 		ClientSubChannels:   make(map[string]map[uuid.UUID]chan<- []Event),
-		SubeventBuffer:      make(map[string]eventBuffer),
+		SubEventBuffer:      make(map[string]eventBuffer),
 		Quit:                quit,
-		MaxeventBufferSize:  1000,
+		MaxEventBufferSize:  1000,
 	}
 
 	// Start subscription manager
@@ -128,11 +133,11 @@ func getLongPollSubscriptionHandler(subscriptionRequests chan clientSubscription
 			// channel.
 			clientTimeouts <- subscription.clientCategoryPair
 			io.WriteString(w, "{\"timeout\": \"no events before timeout\"}")
-		case event := <-subscription.Events:
+		case events := <-subscription.Events:
 			// Consume event.  Subscription manager will automatically discard
 			// this client's channel upon sending event
 			// NOTE: event is actually []Event
-			if jsonData, err := json.Marshal(eventResponse{&event}); err == nil {
+			if jsonData, err := json.Marshal(eventResponse{&events}); err == nil {
 				io.WriteString(w, string(jsonData))
 			} else {
 				io.WriteString(w, "{\"error\": \"json marshaller failed\"}")
@@ -154,12 +159,12 @@ type subscriptionManager struct {
 	// Contains all client sub channels grouped first by sub id then by
 	// client uuid
 	ClientSubChannels map[string]map[uuid.UUID]chan<- []Event
-	SubeventBuffer    map[string]eventBuffer // TODO: ptr to eventBuffer instead of actual value?
+	SubEventBuffer    map[string]eventBuffer // TODO: ptr to eventBuffer instead of actual value?
 	// channel to inform manager to stop running
 	Quit <-chan bool
 	// How big the buffers are (1-n) before events are discareded FIFO
 	// TODO: enforce sane range 1-n where n isn't batshit crazy
-	MaxeventBufferSize int
+	MaxEventBufferSize int
 }
 
 // TODO: add func to create sub manager that adds vars for chan and buf sizes
@@ -174,7 +179,7 @@ func (sm *subscriptionManager) Run() error {
 			// the corresponding event buffer that we can use to fufil request
 			// without storing it
 			doQueueRequest := true
-			if buf, found := sm.SubeventBuffer[newClient.SubscriptionCategory]; found {
+			if buf, found := sm.SubEventBuffer[newClient.SubscriptionCategory]; found {
 				// We have a buffer for this sub category, check for buffered events
 				if events, err := buf.GetEventsSince(newClient.LastEventTime); err == nil && len(events) > 0 {
 					doQueueRequest = false
@@ -231,17 +236,19 @@ func (sm *subscriptionManager) Run() error {
 				}
 			}
 			// Add event buffer for this event's subscription category if doesn't exit
-			buf, bufFound := sm.SubeventBuffer[event.Category]
+			buf, bufFound := sm.SubEventBuffer[event.Category]
 			if !bufFound {
 				buf = eventBuffer{
 					list.New(),
-					sm.MaxeventBufferSize,
+					sm.MaxEventBufferSize,
 				}
-				sm.SubeventBuffer[event.Category] = buf
+				sm.SubEventBuffer[event.Category] = buf
 			}
 			log.Printf("SubscriptionManager: queue event: %v.", event)
 			// queue event in event buffer
-			buf.QueueEvent(&event)
+			if qErr := buf.QueueEvent(&event); qErr != nil {
+				log.Printf("Error: failed to queue event.  err: %s", qErr)
+			}
 		case _ = <-sm.Quit:
 			log.Printf("SubscriptionManager: received quit signal, stopping.")
 			return nil

@@ -22,9 +22,11 @@ func Test_millisecondStringToTime(t *testing.T) {
 	}
 	for index, input := range inputs {
 		actualTime, actualError := millisecondStringToTime(input)
-		if actualTime != expected_outputs[index].Time || actualError != expected_outputs[index].Error {
+		if actualTime != expected_outputs[index].Time ||
+			actualError != expected_outputs[index].Error {
 			t.Errorf("Expected (%q, %q), got (%q, %q).",
-				expected_outputs[index].Time, expected_outputs[index].Error, actualTime, actualError)
+				expected_outputs[index].Time, expected_outputs[index].Error,
+				actualTime, actualError)
 		}
 	}
 }
@@ -52,9 +54,12 @@ func Test_millisecondStringToTime_InvalidInput(t *testing.T) {
 	}
 	for index, input := range inputs {
 		actualTime, actualError := millisecondStringToTime(input)
-		if actualTime != expected_outputs[index].Time || actualError.Error() != expected_outputs[index].ErrorString {
+		if actualTime != expected_outputs[index].Time || actualError.Error() !=
+			expected_outputs[index].ErrorString {
 			t.Errorf("Expected (%q, %q), got (%q, %q).",
-				expected_outputs[index].Time, expected_outputs[index].ErrorString, actualTime, actualError.Error())
+				expected_outputs[index].Time,
+				expected_outputs[index].ErrorString,
+				actualTime, actualError.Error())
 		}
 	}
 }
