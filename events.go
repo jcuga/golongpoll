@@ -1,4 +1,4 @@
-package longpoll
+package golongpoll
 
 import (
 	"container/list"
@@ -7,12 +7,12 @@ import (
 	"time"
 )
 
-// Event is a longpoll event.  This type has a Timestamp as milliseconds since
+// lpEvent is a longpoll event.  This type has a Timestamp as milliseconds since
 // epoch (UTC), a string category, and an arbitrary Data payload.
 // The category is the subscription category/topic that clients can listen for
 // via longpolling.  The Data payload can be anything that is JSON serializable
 // via the encoding/json library's json.Marshal function.
-type Event struct {
+type lpEvent struct {
 	// Timestamp is milliseconds since epoch to match javascrits Date.getTime()
 	Timestamp int64  `json:"timestamp"`
 	Category  string `json:"category"`
@@ -22,7 +22,7 @@ type Event struct {
 
 // eventResponse is the json response that carries longpoll events.
 type eventResponse struct {
-	Events *[]Event `json:"events"`
+	Events *[]lpEvent `json:"events"`
 }
 
 // eventBuffer is a buffer of Events that adds new events to the front/root and
@@ -44,7 +44,7 @@ type eventBuffer struct {
 // QueueEvent adds a new longpoll Event to the front of our buffer and removes
 // the oldest event from the back of the buffer if we're already at maximum
 // capacity.
-func (eb *eventBuffer) QueueEvent(event *Event) error {
+func (eb *eventBuffer) QueueEvent(event *lpEvent) error {
 	if event == nil {
 		return errors.New("event was nil")
 	}
@@ -63,8 +63,8 @@ func (eb *eventBuffer) QueueEvent(event *Event) error {
 // GetEventsSnce will return all of the Events in our buffer that occurred after
 // the given input time (since).  Returns an error value if there are any
 // objects that aren't an Event type in the buffer.  (which would be weird...)
-func (eb *eventBuffer) GetEventsSince(since time.Time) ([]Event, error) {
-	events := make([]Event, 0)
+func (eb *eventBuffer) GetEventsSince(since time.Time) ([]lpEvent, error) {
+	events := make([]lpEvent, 0)
 	// NOTE: events are bufferd with the most recent event at the front.
 	// So we want to start our search at the front of the buffer and stop
 	// searching once we've reached events that are older than the 'since'
@@ -77,7 +77,7 @@ func (eb *eventBuffer) GetEventsSince(since time.Time) ([]Event, error) {
 	var lastGoodItem *list.Element
 	// Search forward until we reach events that are too old
 	for element := eb.List.Front(); element != nil; element = element.Next() {
-		event, ok := element.Value.(*Event)
+		event, ok := element.Value.(*lpEvent)
 		if !ok {
 			return events, fmt.Errorf("Found non-event type in event buffer.")
 		}
@@ -94,14 +94,14 @@ func (eb *eventBuffer) GetEventsSince(since time.Time) ([]Event, error) {
 	// our oldest, valid Event that occurrs after 'since'
 	if lastGoodItem != nil {
 		for element := lastGoodItem; element != nil; element = element.Prev() {
-			event, ok := element.Value.(*Event)
+			event, ok := element.Value.(*lpEvent)
 			if !ok {
 				return events, fmt.Errorf(
 					"Found non-event type in event buffer.")
 			}
 			// we already know this event is after 'since'
 			events = append(events,
-				Event{event.Timestamp, event.Category, event.Data})
+				lpEvent{event.Timestamp, event.Category, event.Data})
 		}
 	}
 	return events, nil

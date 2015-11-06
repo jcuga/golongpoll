@@ -1,4 +1,4 @@
-package longpoll
+package golongpoll
 
 import (
 	"testing"
