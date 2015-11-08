@@ -4,6 +4,7 @@ import (
 	"container/list"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -13,15 +14,17 @@ import (
 	"github.com/nu7hatch/gouuid"
 )
 
-// Public interface to interact with the internall subscriptionManager.
-// Allows you to publish events via Publish() and tell the manager to shut down
-// via Shutdown().  A LongpollInterface is created with each subscriptionManager
-// that gets created by CreateLongpollManager()
+// LongpollManager provides an interface to interact with the internal
+// subscriptionManager.  This allows you to publish events via Publish() and
+// tell the subscription manager to shut down  via Shutdown().
+// A LongpollManager is created with each subscriptionManager that gets created
+// by CreateLongpollManager()
 // This interface also exposes the HTTP handler that client code can attach to
 // a URL like so:
 //		mux := http.NewServeMux()
-//		mux.HandleFunc("/custom/path/to/events", iface.SubscriptionHandler)
-type LongpollInterface struct {
+//		mux.HandleFunc("/custom/path/to/events", manager.SubscriptionHandler)
+type LongpollManager struct {
+	subManager          *subscriptionManager
 	eventsIn            chan<- lpEvent
 	stopSignal          chan<- bool
 	SubscriptionHandler func(w http.ResponseWriter, r *http.Request)
@@ -31,48 +34,45 @@ type LongpollInterface struct {
 // arbitrary data that is convert-able to JSON via the standard's json.Marshal()
 // Category must be a non-empty string no longer than 1024,
 // otherwise you get an error.
-func (iface *LongpollInterface) Publish(category string, data interface{}) error {
+func (m *LongpollManager) Publish(category string, data interface{}) error {
 	if len(category) == 0 {
 		return errors.New("empty category")
 	}
 	if len(category) > 1024 {
 		return errors.New("category cannot be longer than 1024")
 	}
-	iface.eventsIn <- lpEvent{timeToEpochMilliseconds(time.Now()), category, data}
+	m.eventsIn <- lpEvent{timeToEpochMilliseconds(time.Now()), category, data}
 	return nil
 }
 
 // Stop the subscriptionManager.  Useful if you want to stop longpolling without
-// stopping your program.  Note that any ajax calls to the longpoll web handler
+// stopping your program.  Note that any ajax, calls to the longpoll web handler
 // would not get any new events once the manager is stopped.  You should also
 // not call Publish() after calling Shutdown().  Calling Shutdown() more than
 // once will result in a panic.
-func (iface *LongpollInterface) Shutdown() {
-	close(iface.stopSignal)
+func (m *LongpollManager) Shutdown() {
+	close(m.stopSignal)
 }
 
 // Creates a basic longpolling subscription manager, starts it, and returns a
-// LongpollInterface for clients to interact with.  The default options should
+// LongpollManager for clients to interact with.  The default options should
 // cover most client's longpolling needs without having to worry about details.
 // This uses the following options:
-// channelSize (capacity of underlying event channels) of 100.
+// maxTimeoutSeconds of 180.
 // eventBufferSize size 250 (buffers this many most recent events per
 // subscription category) and loggingEnabled as true.
-func CreateManager() (*LongpollInterface, error) {
-	return CreateCustomManager(100, 250, true)
+func CreateManager() (*LongpollManager, error) {
+	return CreateCustomManager(180, 250, true)
 }
 
 // Creates a custom longpolling subscription manager, starts it, and returns a
-// LongpollInterface for clients to interact with.
+// LongpollManager for clients to interact with.
 // The subscription manager can be configured with the following params:
 //
-// channelSize: the capacity of the underlying channels that pipe client
-// subscription requests, client timeouts, and new events to the manager.
-// This must be at least 1, and is probably a good idea to be higher than that
-// to support heavier loads without blocking on new channel sends.
-// In general: the higher the number, the more memory being used by the manager,
-// but the less likely that code is every blocking on a channel send waiting
-// for the channel capacity to be freed up.
+//
+// maxTimeoutSeconds: the max number of seconds client can request as their
+// longpoll subscription timeout.  This timeout is how long the server will
+// wait before responding that there are no new events.  Must be >= 1
 //
 // eventBufferSize: this is how many events get buffered (per category).
 // Buffering is important because it allows us to retain older events.
@@ -88,13 +88,14 @@ func CreateManager() (*LongpollInterface, error) {
 // larger buffers.
 //
 // loggingEnabled: whether or not we are outputting logs
-func CreateCustomManager(channelSize, eventBufferSize int, loggingEnabled bool) (*LongpollInterface, error) {
-	if channelSize < 1 {
-		return nil, errors.New("channel size must be at least 1")
-	}
+func CreateCustomManager(maxTimeoutSeconds, eventBufferSize int, loggingEnabled bool) (*LongpollManager, error) {
 	if eventBufferSize < 1 {
 		return nil, errors.New("event buffer size must be at least 1")
 	}
+	if maxTimeoutSeconds < 1 {
+		return nil, errors.New("max timeout seconds must be at least 1")
+	}
+	channelSize := 100
 	clientRequestChan := make(chan clientSubscription, channelSize)
 	clientTimeoutChan := make(chan clientCategoryPair, channelSize)
 	events := make(chan lpEvent, channelSize)
@@ -105,18 +106,19 @@ func CreateCustomManager(channelSize, eventBufferSize int, loggingEnabled bool) 
 		ClientTimeouts:      clientTimeoutChan,
 		Events:              events,
 		ClientSubChannels:   make(map[string]map[uuid.UUID]chan<- []lpEvent),
-		SubEventBuffer:      make(map[string]eventBuffer),
+		SubEventBuffer:      make(map[string]*eventBuffer),
 		Quit:                quit,
 		MaxEventBufferSize:  eventBufferSize,
 	}
 	// Start subscription manager
 	go subManager.run(loggingEnabled)
-	longpollInterface := LongpollInterface{
+	LongpollManager := LongpollManager{
+		&subManager,
 		events,
 		quit,
-		getLongPollSubscriptionHandler(clientRequestChan, clientTimeoutChan, loggingEnabled),
+		getLongPollSubscriptionHandler(maxTimeoutSeconds, clientRequestChan, clientTimeoutChan, loggingEnabled),
 	}
-	return &longpollInterface, nil
+	return &LongpollManager, nil
 }
 
 type clientSubscription struct {
@@ -143,7 +145,7 @@ func newclientSubscription(subscriptionCategory string, lastEventTime time.Time)
 }
 
 // get web handler that has closure around sub chanel and clientTimeout channnel
-func getLongPollSubscriptionHandler(subscriptionRequests chan clientSubscription,
+func getLongPollSubscriptionHandler(maxTimeoutSeconds int, subscriptionRequests chan clientSubscription,
 	clientTimeouts chan<- clientCategoryPair, loggingEnabled bool) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		timeout, err := strconv.Atoi(r.URL.Query().Get("timeout"))
@@ -156,27 +158,20 @@ func getLongPollSubscriptionHandler(subscriptionRequests chan clientSubscription
 		w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate") // HTTP 1.1.
 		w.Header().Set("Pragma", "no-cache")                                   // HTTP 1.0.
 		w.Header().Set("Expires", "0")                                         // Proxies.
-		if err != nil || timeout > 180 || timeout < 1 {
+		if err != nil || timeout > maxTimeoutSeconds || timeout < 1 {
 			if loggingEnabled {
-				log.Printf("Error: Invalid timeout param.  Must be 1-180. Got: %q.\n",
-					r.URL.Query().Get("timeout"))
+				log.Printf("Error: Invalid timeout param.  Must be 1-%d. Got: %q.\n",
+					maxTimeoutSeconds, r.URL.Query().Get("timeout"))
 			}
-			io.WriteString(w, "{\"error\": \"Invalid timeout arg.  Must be 1-180.\"}")
+			io.WriteString(w, fmt.Sprintf("{\"error\": \"Invalid timeout arg.  Must be 1-%d.\"}", maxTimeoutSeconds))
 			return
 		}
 		category := r.URL.Query().Get("category")
 		if len(category) == 0 || len(category) > 1024 {
 			if loggingEnabled {
-				log.Printf("Error: Invalid subscription category.\n")
+				log.Printf("Error: Invalid subscription category, must be 1-1024 characters long.\n")
 			}
-			io.WriteString(w, "{\"error\": \"Invalid subscription category.\"}")
-			return
-		}
-		if err != nil {
-			if loggingEnabled {
-				log.Printf("Error creating new Subscription: %s.\n", err)
-			}
-			io.WriteString(w, "{\"error\": \"Error creating new Subscription.\"}")
+			io.WriteString(w, "{\"error\": \"Invalid subscription category, must be 1-1024 characters long.\"}")
 			return
 		}
 		// Default to only looking for current events
@@ -198,6 +193,13 @@ func getLongPollSubscriptionHandler(subscriptionRequests chan clientSubscription
 			}
 		}
 		subscription, err := newclientSubscription(category, lastEventTime)
+		if err != nil {
+			if loggingEnabled {
+				log.Printf("Error creating new Subscription: %s.\n", err)
+			}
+			io.WriteString(w, "{\"error\": \"Error creating new Subscription.\"}")
+			return
+		}
 		subscriptionRequests <- *subscription
 		select {
 		case <-time.After(time.Duration(timeout) * time.Second):
@@ -230,7 +232,7 @@ type subscriptionManager struct {
 	// Contains all client sub channels grouped first by sub id then by
 	// client uuid
 	ClientSubChannels map[string]map[uuid.UUID]chan<- []lpEvent
-	SubEventBuffer    map[string]eventBuffer // TODO: ptr to eventBuffer instead of actual value?
+	SubEventBuffer    map[string]*eventBuffer
 	// channel to inform manager to stop running
 	Quit <-chan bool
 	// How big the buffers are (1-n) before events are discareded FIFO
@@ -322,7 +324,7 @@ func (sm *subscriptionManager) run(loggingEnabled bool) error {
 			// Add event buffer for this event's subscription category if doesn't exit
 			buf, bufFound := sm.SubEventBuffer[event.Category]
 			if !bufFound {
-				buf = eventBuffer{
+				buf = &eventBuffer{
 					list.New(),
 					sm.MaxEventBufferSize,
 				}
