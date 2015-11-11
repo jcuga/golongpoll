@@ -4,9 +4,8 @@ golang HTTP longpolling library, making web pub-sub easy!
 Table of contents
 =================
   * [Basic Usage](#basic-usage)
+    * [HTTP Subscription Handler](#http-subscription-handler)
   * [What is longpolling?](#what-is-longpolling)
-    * [Pros and cons](#pros-and-cons)
-    * [Longpolling versus Websockets versus SSE](#longpolling-versus-websockets-versus-sse)
   * [Included examples](#included-examples)
     * [Basic](#basic)
     * [Advanced](#advanced)
@@ -25,6 +24,7 @@ import	"github.com/jcuga/golongpoll"
 manager, err := golongpoll.CreateManager()
 
 // Expose events to browsers
+// See subsection on how to interact with the subscription handler
 http.HandleFunc("/events", manager.SubscriptionHandler)
 http.ListenAndServe("127.0.0.1:8081", nil)
 
@@ -39,15 +39,31 @@ You can also configure the LongpollManager by using
 golongpoll.CreateCustomManager(...)
 ```
 
+HTTP Subscription Handler
+-----
+The ```LongpollManager``` has a field called ```SubscriptionHandler``` that you can attach as an ```http.HandleFunc```.
+
+This http handler has the following URL query params as input.
+
+* ```timeout``` number of seconds the server should wait until issuing a timeout response in the event there are no new events during the client's longpoll.  The default manager created via ```CreateManager``` has a max timeout of 180 seconds, but you can customize this by using ```CreateCustomManager```
+* ```category``` the subscription category to subscribe to.  When you publish an event, you publish it on a specific category.
+* ```since_time``` optional.  the number of milliseconds since epoch.  If not provided, defaults to current time.  This tells the longpoll server to only give you events that have occurred since this time.  
+
+The response from this http handler is one of the following ```application/json``` responses:
+
+* error response: ```{"error": "error message as to why request failed."}```
+  * Perhaps you forgot to include a query param?  Or an invalid timeout? 
+* timeout response: ```{"timeout": "no events before timeout"}``` 
+  * This means no events occurred within the timeout window.  (given your ```since_time``` param) 
+* event(s) response: ```{"events":[{"timestamp":1447218359843,"category":"farm","data":"Pig went 'Oink! Oink!'"}]}```
+  * includes one or more event object.  If no events occurred, you should get a timeout instead. 
+
+To receive a continuous stream of chronological events, you should keep hitting the http handler after each response, but with an updated ```since_time``` value equal to that of the last event's timestamp. 
+
+You can see how to make these longpoll requests using jquery by viewing the example programs' code.
+
 What is longpolling
 =================
-todo
-Pros and cons
------
-todo
-
-Longpolling versus Websockets versus SSE
------
 todo
 
 Included examples
@@ -87,15 +103,15 @@ Try clicking around and notice the events showing up in the tables.  Try opening
 
 More advanced use
 =================
-todo
+All of the below topics are demonstrated in the advanced example:
 Events with JSON payloads
 -----
-todo
+Try passing any type that is convertable to JSON to ```Publish()```. If the type can be passed to encoding/json.Marshal(), it will work.
 
 Wrapping subscriptions
 -----
-todo
+You can create your own http handler that calls ```LongpollManager.SubscriptionHandler``` to add your own layer of logic on top of the subscription handler.  Uses include: user authentication/access-control and limiting subscriptions to a known set of categories.
 
 Publishing events via the web
 -----
-todo
+You can create a closure that captures the LongpollManager and attach it as an http handler function.  Within that function, simply call Publish(). 
