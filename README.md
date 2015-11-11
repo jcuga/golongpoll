@@ -16,7 +16,7 @@ Table of contents
 
 Basic usage
 =================
-To use, create a LongpollManager and then use it to publish events and expose an HTTP handler to subscribe to events.
+To use, create a ```LongpollManager``` and then use it to publish events and expose an HTTP handler to subscribe to events.
 ```go
 import	"github.com/jcuga/golongpoll"
 
@@ -54,7 +54,7 @@ The response from this HTTP handler is one of the following ```application/json`
 * error response: ```{"error": "error message as to why request failed."}```
   * Perhaps you forgot to include a query param?  Or an invalid timeout? 
 * timeout response: ```{"timeout": "no events before timeout"}``` 
-  * This means no events occurred within the timeout window.  (given your ```since_time``` param) 
+  * This means no events occurred within the timeout window.  (also given your ```since_time``` param) 
 * event(s) response: ```{"events":[{"timestamp":1447218359843,"category":"farm","data":"Pig went 'Oink! Oink!'"}]}```
   * includes one or more event object.  If no events occurred, you should get a timeout instead. 
 
@@ -64,7 +64,7 @@ You can see how to make these longpoll requests using jquery by viewing the exam
 
 What is longpolling
 =================
-Longpolling is a way to get events/data "pushed" to the browser as soon as they occur* (with a usually very small delay).  Longpolling is an option to consider when you want updates to be sent from the webserver to a webapp as they occur.  This is a one-way communication path.  If you need full-duplex communication, consider an alternative like websockets.  
+Longpolling is a way to get events/data "pushed" to the browser as soon as they occur* (with a usually very small delay).  Longpolling is an option to consider when you want updates to be sent from the webserver to a browser as they occur.  This is a one-way communication path.  If you need full-duplex communication, consider an alternative like websockets.  
 
 To better understand longpolling, let's consider what it improves upon.  A naive way to get updates as soon as possible from a webserver is to continuously make AJAX requests from a webpage asking the server if there is anything new.
 
@@ -90,7 +90,7 @@ Websockets are great if you need to push data in both directions.  But if you're
     * As a general rule, the closer to traditional HTTP you are, the wider support you have. 
 
 *Why does everyone run to websockets even when they only need server-to-client pushing?*
-Probably because it's difficult to get longpolling right.  By this I mean handling the subtleties on the server end to make sure that any events that occur in the small window between the time that a client gets a response and before they make a new request, as well as buffering older events in case clients went offline.  There is a plethora of posts on the internet to make a half-baked longpoll server, but few if any posts outline how to make a robust one.  (that's why you should use golongpoll--it will do this for you!).
+Probably because it's difficult to get longpolling right.  By this I mean handling the subtleties on the server end to make sure that any events that occur in the small window between the time that a client gets a response and before they make a new request, handling disconnects, and buffering older events in case clients went offline.  There is a plethora of posts on the internet to make a half-baked longpoll server, but few if any posts outline how to make a robust one.  (that's why you should use golongpoll--it will do this for you!).
 
 Also, depending on what language you're writing the webserver in, longpolling might be more difficult.  Think python running in a WSGI container.  Without the flexibility of golang and it's channels, such implementations could be quite the headache.
 
@@ -99,7 +99,7 @@ Included examples
 There are two fully-functional example programs provided. 
 Basic
 -----
-This program creates a default LongpollManager, shows how a goroutine can generate some events, and how to subscribe from a webpage.  See [basic.go](examples/basic/basic.go)
+This program creates a default ```LongpollManager```, shows how a goroutine can generate some events, and how to subscribe from a webpage.  See [basic.go](examples/basic/basic.go)
 
 To run this example
 ```bash
@@ -115,7 +115,7 @@ And observe the events appearing every 0-5 seconds.
 
 Advanced
 -----
-This program creates a custom LongpollManager, shows how an http handler can publish events, and how to subscribe from a webpage.  See [advanced.go](examples/advanced/advanced.go)
+This program creates a custom ```LongpollManager```, shows how an http handler can publish events, and how to subscribe from a webpage.  See [advanced.go](examples/advanced/advanced.go)
 
 To run this example
 ```bash
