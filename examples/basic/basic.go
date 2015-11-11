@@ -1,14 +1,28 @@
-// This is a basic example.  Here we have some random events being generated
-// by a goroutine, and the SubscriptionHandler function being served locally.
+// This is a basic example of how to use golongpoll.
 //
-// Having events coming from another goroutine shows how some other part
-// of your go program could be generating events.  Events don't have to be
-// created by other HTTP requests.  See the advanced example for events being
-// created by web requests.
+// In this example, we'll generate some random events and provide a way for
+// browsers to subscribe to those events.
 //
-// The events have a simple string payload, but they could be anything that
-// is serializable to JSON.  See the advanced example for more complicated
-// event payloads
+// To run this example:
+//   go build examples/basic/basic.go
+// Then run the binary and visit http://127.0.0.1:8081/basic
+//
+// A couple of notes:
+//   - In this example, event payloads are string data, but they can be anything
+//     that is convert-able to JSON (passes encoding/json's Marshal() function)
+//
+//   - LongpollManager.SubscriptionHandler is directly bound to a http handler.
+//     But there's no reason why you can't wrap that handler in your own
+//     function to add a layer of validation, access control, or whatever else
+//     you can think up.  See the advanced example on how to do this.
+//
+//   - Our events are simple and randomly generated in a goroutine, but you can
+//     create events anywhere and anyhow as long as you pass a reference to the
+//     LongpollManager and just call Publish().  Maybe you have a goroutine that
+//     checks the weather, a stock price, or something cool.  Or you can even
+//     have another http handler that calls Publish().  To do this, you must
+//     capture the manager reference in a closure.  See the advanced example.
+//
 package main
 
 import (
@@ -32,6 +46,7 @@ func main() {
 	http.HandleFunc("/basic", BasicExampleHomepage)
 	// Serve our event subscription web handler
 	http.HandleFunc("/basic/events", manager.SubscriptionHandler)
+	fmt.Println("Serving webpage at http://127.0.0.1:8081/basic")
 	http.ListenAndServe("127.0.0.1:8081", nil)
 
 	// We'll never get here as long as http.ListenAndServe starts successfully
@@ -40,6 +55,8 @@ func main() {
 	// internal longpoll manager for other reasons, you can do so via
 	// Shutdown:
 	manager.Shutdown() // Stops the internal goroutine that provides subscription behavior
+	// Again, calling shutdown is a bit silly here since the goroutines will
+	// exit on main() exit.  But I wanted to show you that it is possible.
 }
 
 func generateRandomEvents(lpManager *golongpoll.LongpollManager) {
@@ -53,12 +70,19 @@ func generateRandomEvents(lpManager *golongpoll.LongpollManager) {
 		"Tractor went: Vroom Vroom!",
 		"Farmer ate bacon.",
 	}
+	// every 0-5 seconds, something happens at the farm:
 	for {
 		time.Sleep(time.Duration(rand.Intn(5000)) * time.Millisecond)
 		lpManager.Publish("farm", farm_events[rand.Intn(len(farm_events))])
 	}
 }
 
+// Here we're providing a webpage that shows events as they happen.
+// In this code you'll see a sample of how to implement longpolling on the
+// client side in javascript.  I used jquery here...
+//
+// I was too lazy to serve this file statically.
+// This is me setting a bad example :)
 func BasicExampleHomepage(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, `
 <html>
@@ -109,13 +133,6 @@ func BasicExampleHomepage(w http.ResponseWriter, r *http.Request) {
                     setTimeout(poll, successDelay);
                     return;
                 }
-                if (data && data.events && data.events.length == 0) {
-                    console.log("Empty events, that's weird!")
-                    // should get a timeout response, not an empty event array
-                    // if no events during longpoll window.  so this is weird
-                    setTimeout(poll, errorDelay);
-                    return;
-                }
                 if (data && data.timeout) {
                     console.log("No events, checking again.");
                     // no events within timeout window, start another longpoll:
@@ -128,12 +145,14 @@ func BasicExampleHomepage(w http.ResponseWriter, r *http.Request) {
                     setTimeout(poll, errorDelay);
                     return;
                 }
+                // We should have gotten one of the above 3 cases:
+                // either nonempty event data, a timeout, or an error.
                 console.log("Didn't get expected event data, try again shortly...");
                 setTimeout(poll, errorDelay);
             }, dataType: "json",
         error: function (data) {
             console.log("Error in ajax request--trying again shortly...");
-            setTimeout(poll, 3000);  // 3s
+            setTimeout(poll, errorDelay);  // 3s
         }
         });
     })();

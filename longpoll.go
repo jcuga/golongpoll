@@ -15,14 +15,30 @@ import (
 )
 
 // LongpollManager provides an interface to interact with the internal
-// subscriptionManager.  This allows you to publish events via Publish() and
-// tell the subscription manager to shut down  via Shutdown().
+// longpolling pup-sub goroutine.
+//
+// This allows you to publish events via Publish()
+// If for some reason you want to stop the pub-sub goroutine at any time
+// you can call Shutdown() and all longpolling will be disabled.  Note that the
+// pub-sub goroutine will exit on program exit, so for most simple programs,
+// calling Shutdown() is not necessary.
+//
 // A LongpollManager is created with each subscriptionManager that gets created
 // by CreateLongpollManager()
 // This interface also exposes the HTTP handler that client code can attach to
 // a URL like so:
 //		mux := http.NewServeMux()
 //		mux.HandleFunc("/custom/path/to/events", manager.SubscriptionHandler)
+// Note, this http handler can be wrapped by another function (try capturing the
+// manager in a closure) to add additional validation, access control, or other
+// functionality on top of the subscription handler.
+//
+// You can have another http handler publish events by capturing the manager in
+// a closure and calling manager.Publish() from inside a http handler.  See the
+// advanced example (examples/advanced/advanced.go)
+//
+// If for some reason you want multiple goroutines handling different pub-sub
+// channels, you can simply create multiple LongpollManagers.
 type LongpollManager struct {
 	subManager          *subscriptionManager
 	eventsIn            chan<- lpEvent
@@ -32,7 +48,7 @@ type LongpollManager struct {
 
 // Publish an event for a given subscription category.  This event can have any
 // arbitrary data that is convert-able to JSON via the standard's json.Marshal()
-// Category must be a non-empty string no longer than 1024,
+// the category param must be a non-empty string no longer than 1024,
 // otherwise you get an error.
 func (m *LongpollManager) Publish(category string, data interface{}) error {
 	if len(category) == 0 {
@@ -45,49 +61,58 @@ func (m *LongpollManager) Publish(category string, data interface{}) error {
 	return nil
 }
 
-// Stop the subscriptionManager.  Useful if you want to stop longpolling without
-// stopping your program.  Note that any ajax, calls to the longpoll web handler
-// would not get any new events once the manager is stopped.  You should also
-// not call Publish() after calling Shutdown().  Calling Shutdown() more than
-// once will result in a panic.
+// Shutdown allows the internal goroutine that handles the longpull pup-sub
+// to be stopped.  This may be useful if you want to turn off longpolling
+// without terminating your program.  After a shutdown, you can't call Publish()
+// or get any new results from the SubscriptionHandler.  Multiple calls to
+// this function on the same manager will result in a panic.
 func (m *LongpollManager) Shutdown() {
 	close(m.stopSignal)
 }
 
-// Creates a basic longpolling subscription manager, starts it, and returns a
-// LongpollManager for clients to interact with.  The default options should
-// cover most client's longpolling needs without having to worry about details.
+// Creates a basic LongpollManager and pub-sub goroutine connected via channels
+// that are exposed via LongpollManager's Publish() function and
+// SubscriptionHandler field which can get used as an http handler function.
+// This basic LongpollManager's default options should cover most client's
+// longpolling needs without having to worry about details.
 // This uses the following options:
 // maxTimeoutSeconds of 180.
 // eventBufferSize size 250 (buffers this many most recent events per
 // subscription category) and loggingEnabled as true.
+//
+// Creates a basic LongpollManager with the default settings.
+// This manager is an interface on top of an internal goroutine that uses
+// channels to support event pub-sub.
+//
+// The default settings should handle most use cases, unless you expect to have
+// a large number of events on a given subscription category within a short
+// amount of time.  Perhaps having more than 50 events a second on a single
+// subscription category would be the time to start considering tweaking the
+// settings via CreateCustomManager.
+//
+// The default settings are:  a max longpoll timeout window of 180 seconds,
+// the per-subscription-category event buffer size of 250 events,
+// and logging enabled.
 func CreateManager() (*LongpollManager, error) {
 	return CreateCustomManager(180, 250, true)
 }
 
-// Creates a custom longpolling subscription manager, starts it, and returns a
-// LongpollManager for clients to interact with.
-// The subscription manager can be configured with the following params:
+// Creates a custom LongpollManager and pub-sub goroutine connected via channels
+// that are exposed via LongpollManager's Publish() function and
+// SubscriptionHandler field which can get used as an http handler function.
 //
+// The options are as follows.
+// maxTimeoutSeconds, the max number of seconds a longpoll web request can wait
+// before returning a timeout response in the event of no events on that
+// subscription category.
 //
-// maxTimeoutSeconds: the max number of seconds client can request as their
-// longpoll subscription timeout.  This timeout is how long the server will
-// wait before responding that there are no new events.  Must be >= 1
+// eventBufferSize, the number of events that get buffered per subscription
+// category before we start throwing the oldest events out.  These buffers are
+// used to support longpolling for events in the past, and giving a better
+// guarantee that any events that occurred between client's longpoll requests
+// can still be seen by their next request.
 //
-// eventBufferSize: this is how many events get buffered (per category).
-// Buffering is important because it allows us to retain older events.
-// If there are a lot of events occurring between the time a client has
-// received a batch of new events, and the time when the client requests the
-// next batch of events (clients typically request for more events as soon
-// as they get a response, so the turnaround is typically a second or so)
-// then we'd rely on the buffer to be large enough to retain at least that much
-// time worth of events to ensure a complete stream of events to the web
-// clients without any gaps.  In general, the larger the buffer, the more memory
-// the manager uses, but the manager can support faster rates of event spawning.
-// If you're publishing tons of events in very short amounts of time, you want
-// larger buffers.
-//
-// loggingEnabled: whether or not we are outputting logs
+// loggingEnabled, whether or not log statements are printed out.
 func CreateCustomManager(maxTimeoutSeconds, eventBufferSize int, loggingEnabled bool) (*LongpollManager, error) {
 	if eventBufferSize < 1 {
 		return nil, errors.New("event buffer size must be at least 1")
@@ -123,7 +148,7 @@ func CreateCustomManager(maxTimeoutSeconds, eventBufferSize int, loggingEnabled 
 
 type clientSubscription struct {
 	clientCategoryPair
-	// used to ensure no events skipped between long polls
+	// used to ensure no events skipped between long polls:
 	LastEventTime time.Time
 	// we channel arrays of events since we need to send everything a client
 	// cares about in a single channel send.  This makes channel receives a
@@ -239,6 +264,7 @@ type subscriptionManager struct {
 	MaxEventBufferSize int
 }
 
+// This should be fired off in its own goroutine
 func (sm *subscriptionManager) run(loggingEnabled bool) error {
 	if loggingEnabled {
 		log.Printf("SubscriptionManager: Starting run.")
