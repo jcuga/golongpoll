@@ -235,7 +235,7 @@ func AdvancedExampleHomepage(w http.ResponseWriter, r *http.Request) {
     // private events because that's what the server is publishing on this
     // category, and only you are allowed to access it.
     (function pollYourActions() {
-        var timeout = 15;  // in seconds
+        var timeout = 45;  // in seconds
         var optionalSince = "";
         if (yourActionsSinceTime) {
             optionalSince = "&since_time=" + yourActionsSinceTime;
@@ -296,7 +296,7 @@ func AdvancedExampleHomepage(w http.ResponseWriter, r *http.Request) {
     // Longpoll subscription for everyone's (public) actions.
     // You wont see other people's private actions
     (function pollPublicActions() {
-        var timeout = 15;  // in seconds
+        var timeout = 45;  // in seconds
         var optionalSince = "";
         if (publicActionsSinceTime) {
             optionalSince = "&since_time=" + publicActionsSinceTime;

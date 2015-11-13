@@ -108,7 +108,7 @@ func BasicExampleHomepage(w http.ResponseWriter, r *http.Request) {
     var category = "farm";
 
     (function poll() {
-        var timeout = 15;  // in seconds
+        var timeout = 45;  // in seconds
         var optionalSince = "";
         if (sinceTime) {
             optionalSince = "&since_time=" + sinceTime;
