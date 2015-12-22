@@ -53,8 +53,9 @@ The response from this HTTP handler is one of the following ```application/json`
 
 * error response: ```{"error": "error message as to why request failed."}```
   * Perhaps you forgot to include a query param?  Or an invalid timeout? 
-* timeout response: ```{"timeout": "no events before timeout"}``` 
+* timeout response: ```{"timeout":"no events before timeout","timestamp":1450827183289}``` 
   * This means no events occurred within the timeout window.  (also given your ```since_time``` param) 
+  * The timestamp is the server time when it issued a timeout response, so you can use this value as since_time in your next request.
 * event(s) response: ```{"events":[{"timestamp":1447218359843,"category":"farm","data":"Pig went 'Oink! Oink!'"}]}```
   * includes one or more event object.  If no events occurred, you should get a timeout instead. 
 
