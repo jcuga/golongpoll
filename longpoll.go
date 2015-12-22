@@ -249,10 +249,12 @@ func getLongPollSubscriptionHandler(maxTimeoutSeconds int, subscriptionRequests 
 		}()
 		select {
 		case <-time.After(time.Duration(timeout) * time.Second):
-			// Lets the subscription manager know it can discard this request's
-			// channel.
-			clientTimeouts <- subscription.clientCategoryPair
-			io.WriteString(w, "{\"timeout\": \"no events before timeout\"}")
+			timeout_resp := makeTimeoutResponse(time.Now())
+			if jsonData, err := json.Marshal(timeout_resp); err == nil {
+				io.WriteString(w, string(jsonData))
+			} else {
+				io.WriteString(w, "{\"error\": \"json marshaller failed\"}")
+			}
 		case events := <-subscription.Events:
 			// Consume event.  Subscription manager will automatically discard
 			// this client's channel upon sending event
@@ -266,6 +268,17 @@ func getLongPollSubscriptionHandler(maxTimeoutSeconds int, subscriptionRequests 
 		// cancel disconnect detection
 		close(requestFuffilled)
 	}
+}
+
+// eventResponse is the json response that carries longpoll events.
+type timeoutResponse struct {
+	TimeoutMessage string `json:"timeout"`
+	Timestamp      int64  `json:"timestamp"`
+}
+
+func makeTimeoutResponse(t time.Time) *timeoutResponse {
+	return &timeoutResponse{"no events before timeout",
+		timeToEpochMilliseconds(t)}
 }
 
 type clientCategoryPair struct {

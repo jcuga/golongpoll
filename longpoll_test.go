@@ -503,8 +503,18 @@ func Test_LongpollManager_WebClient_NoEventsSoTimeout(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Errorf("SubscriptionHandler didn't return %v", http.StatusOK)
 	}
-	if w.Body.String() != "{\"timeout\": \"no events before timeout\"}" {
-		t.Errorf("Unexpected response: %q", w.Body.String())
+	approxTimeoutTime := timeToEpochMilliseconds(time.Now())
+	var timeoutResp timeoutResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &timeoutResp); err != nil {
+		t.Errorf("Failed to decode json: %q", err)
+	}
+	if timeoutResp.TimeoutMessage != "no events before timeout" {
+		t.Errorf("Unexpected timeout message: %q", timeoutResp.TimeoutMessage)
+	}
+	if timeoutResp.Timestamp < (approxTimeoutTime-100) ||
+		timeoutResp.Timestamp > approxTimeoutTime {
+		t.Errorf("Unexpected timeout timestamp.  Expected: %q, got: %q",
+			approxTimeoutTime, timeoutResp.Timestamp)
 	}
 
 	// Don't forget to kill our pubsub manager's run goroutine
@@ -596,8 +606,18 @@ func Test_LongpollManager_WebClient_HasEvents(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Errorf("SubscriptionHandler didn't return %v", http.StatusOK)
 	}
-	if w.Body.String() != "{\"timeout\": \"no events before timeout\"}" {
-		t.Errorf("Unexpected response: %q", w.Body.String())
+	approxTimeoutTime := timeToEpochMilliseconds(time.Now())
+	var timeoutResp timeoutResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &timeoutResp); err != nil {
+		t.Errorf("Failed to decode json: %q", err)
+	}
+	if timeoutResp.TimeoutMessage != "no events before timeout" {
+		t.Errorf("Unexpected timeout message: %q", timeoutResp.TimeoutMessage)
+	}
+	if timeoutResp.Timestamp < (approxTimeoutTime-100) ||
+		timeoutResp.Timestamp > approxTimeoutTime {
+		t.Errorf("Unexpected timeout timestamp.  Expected: %q, got: %q",
+			approxTimeoutTime, timeoutResp.Timestamp)
 	}
 
 	// Now ask for events since the start of our test, which will include
@@ -722,4 +742,17 @@ func Test_LongpollManager_WebClient_HasBufferedEvents(t *testing.T) {
 	// Don't forget to kill our pubsub manager's run goroutine
 	manager.Shutdown()
 
+}
+
+func Test_LongpollManager_makeTimeoutResponse(t *testing.T) {
+	now := time.Now()
+	timeoutResp := makeTimeoutResponse(now)
+	timeoutTime := timeToEpochMilliseconds(now)
+	if timeoutResp.TimeoutMessage != "no events before timeout" {
+		t.Errorf("Unexpected timeout message: %q", timeoutResp.TimeoutMessage)
+	}
+	if timeoutResp.Timestamp != timeoutTime {
+		t.Errorf("Unexpected timeout timestamp.  Expected: %q, got: %q",
+			timeoutTime, timeoutResp.Timestamp)
+	}
 }
