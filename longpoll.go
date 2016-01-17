@@ -231,24 +231,11 @@ func getLongPollSubscriptionHandler(maxTimeoutSeconds int, subscriptionRequests 
 		// need to wait around to fulfill a subscription if no one is going to
 		// receive it
 		disconnectNotify := w.(http.CloseNotifier).CloseNotify()
-		// Let's the goroutine checking for disconnect know to stop waiting for
-		// a close notificaiton because the request was successfully fuffilled
-		// Without this the goroutine would hang around for a while longer than
-		// the request and then fire when the TCP connection closes.
-		// This doesn't do any real harm, but its wasteful to leave running and
-		// you'd see two logs about removing client which would seem weird.
-		requestFuffilled := make(chan bool, 1)
-		go func() {
-			select {
-			case <-disconnectNotify:
-				clientTimeouts <- subscription.clientCategoryPair
-			case <-requestFuffilled:
-				// just let the goroutine reach end of execution
-				break
-			}
-		}()
 		select {
 		case <-time.After(time.Duration(timeout) * time.Second):
+			// Lets the subscription manager know it can discard this request's
+			// channel.
+			clientTimeouts <- subscription.clientCategoryPair
 			timeout_resp := makeTimeoutResponse(time.Now())
 			if jsonData, err := json.Marshal(timeout_resp); err == nil {
 				io.WriteString(w, string(jsonData))
@@ -264,9 +251,12 @@ func getLongPollSubscriptionHandler(maxTimeoutSeconds int, subscriptionRequests 
 			} else {
 				io.WriteString(w, "{\"error\": \"json marshaller failed\"}")
 			}
+		case <-disconnectNotify:
+			// Client connection closed before any events occurred and before
+			// the timeout was exceeded.  Tell manager to forget about this
+			// client.
+			clientTimeouts <- subscription.clientCategoryPair
 		}
-		// cancel disconnect detection
-		close(requestFuffilled)
 	}
 }
 

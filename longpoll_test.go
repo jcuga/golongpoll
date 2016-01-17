@@ -521,7 +521,7 @@ func Test_LongpollManager_WebClient_NoEventsSoTimeout(t *testing.T) {
 	manager.Shutdown()
 }
 
-func Test_LongpollManager_WebClient_Disconnect(t *testing.T) {
+func Test_LongpollManager_WebClient_Disconnect_RemoveClientSub(t *testing.T) {
 	manager, _ := CreateCustomManager(120, 100, true)
 	subscriptionHandler := ajaxHandler(manager.SubscriptionHandler)
 	if _, found := manager.subManager.ClientSubChannels["veggies"]; found {
@@ -549,6 +549,60 @@ func Test_LongpollManager_WebClient_Disconnect(t *testing.T) {
 		}
 		if val, _ := manager.subManager.ClientSubChannels["veggies"]; len(val) != 0 {
 			t.Errorf("Expected sub channel to have no more clients subscribed")
+		}
+	}()
+
+	subscriptionHandler.ServeHTTP(w, req)
+	// Don't forget to kill our pubsub manager's run goroutine
+	manager.Shutdown()
+}
+
+func Test_LongpollManager_WebClient_Disconnect_TerminateHttp(t *testing.T) {
+	manager, _ := CreateCustomManager(120, 100, true)
+	testChannel := make(chan int, 2)
+	webValue := 7
+	goroutineValue := 13
+	subscriptionHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		manager.SubscriptionHandler(w, r)
+		testChannel <- webValue
+	})
+	if _, found := manager.subManager.ClientSubChannels["veggies"]; found {
+		t.Errorf("Expected client sub channel not to exist yet ")
+	}
+	// This request has timeout of 5 seconds, but we're going to simulate a
+	// disconnect in 1 second which is earlier.
+	// If the wrapping subscription handler gets to the end, it will publish
+	// the number 7 on our test channel. Have a goroutine publish a different
+	// value at some time after the disconnect, but before the timeout
+	// and confirm that the disconnect forced the subscription handler
+	// to return early and thus we get the expected published value.
+	req, _ := http.NewRequest("GET", "?timeout=5&category=veggies", nil)
+	w := NewCloseNotifierRecorder()
+
+	go func() {
+		time.Sleep(time.Duration(3) * time.Second)
+		testChannel <- goroutineValue
+	}()
+
+	go func() {
+		time.Sleep(time.Duration(250) * time.Millisecond)
+		// confirm subscription entry exists, with one client
+		if _, found := manager.subManager.ClientSubChannels["veggies"]; !found {
+			t.Errorf("Expected client sub channel to exist")
+		}
+		if val, _ := manager.subManager.ClientSubChannels["veggies"]; len(val) != 1 {
+			t.Errorf("Expected sub channel to have one client subscribed")
+		}
+		time.Sleep(time.Duration(1) * time.Second)
+		w.CloseNotifier <- true
+		time.Sleep(time.Duration(2) * time.Second)
+		// Confirm that our test channel has the value from our web handler and
+		// not from our goroutine
+		select {
+		case val := <-testChannel:
+			if val != webValue {
+				t.Errorf("Expected to get channel send from http handler before the goroutine.")
+			}
 		}
 	}()
 
