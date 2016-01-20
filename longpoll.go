@@ -97,6 +97,62 @@ func CreateManager() (*LongpollManager, error) {
 	return CreateCustomManager(180, 250, true)
 }
 
+const (
+	// Magic number to represent 'Forever' in
+	// LongpollOptions.EventTimeToLiveSeconds and
+	// LongpollOptions.CategoryTimeToLiveSeconds
+	Forever = -1001
+)
+
+// Options for LongpollManager
+type Options struct {
+	// Whether or not to print logs
+	LoggingEnabled bool
+
+	// Max client timeout seconds  to be accepted by the SubscriptionHandler
+	// (The 'timeout' HTTP query param)
+	MaxLongpollTimeoutSeconds int
+
+	// How many events to buffer per Category before discarding oldest events
+	// due to buffer being exhausted.  Larger buffer sizes are useful for
+	// high volumes of events in the same categories.  But for low-volumes,
+	// smaller buffer sizes are more efficient.
+	MaxEventBufferSize int
+
+	// How long (seconds) events remain in their respective category's
+	// EventBuffer before being deleted. (Deletes old events even if buffer has
+	// the room.  Useful to save space if you don't need old events)
+	// You can use a large MaxEventBufferSize to handle spikes in event volumes
+	// in a single category but have a relatively short EventTimeToLiveSeconds
+	// value to save space in the more common low-volume case.
+	// If you want events to remain in the buffer as long as there is room per
+	// MaxEventBufferSize, then use the magic value longpoll.Forever here.
+	EventTimeToLiveSeconds int
+
+	// Whether or not to delete an event as soon as it is retrieved via an
+	// HTTP longpoll.  Saves on space if clients only interested in seing an
+	// event once and never again.  But be careful if two clients share the
+	// same subscription category, enabling this means only one of the
+	// clients will see any given event.
+	DeleteEventAfterFirstRetrieval bool
+
+	// How many seconds an empty category remains before being deleted.
+	// Can be zero, meaning the category's EventBuffer gets deleted as soon as
+	// the buffer is empty (no events).
+	// Having a delay before a category's EventBuffer is deleted may be useful
+	// in the event that you are deleting events via
+	// DeleteEventAfterFirstRetrieval and don't want to have to re-create a new
+	// EventBuffer for nearly every single event in that category since an
+	// active longpoller would constantly cause the buffer to be deleted.
+	EmptyCategoryTimeToLiveSeconds int
+}
+
+// TODO: DefaultLongpoll function - creates default options
+// TODO: CustomLongpoll function - takes options as arg
+// TODO: deprecated CreateManager() and CreateCustomManager()
+// TODO: impl those funcs in terms of new ones
+// TODO: implement options.  Delete EventBuffer when empty.  OR when empty and N amount of time?
+
 // Creates a custom LongpollManager and pub-sub goroutine connected via channels
 // that are exposed via LongpollManager's Publish() function and
 // SubscriptionHandler field which can get used as an http handler function.
@@ -373,7 +429,7 @@ func (sm *subscriptionManager) run(loggingEnabled bool) error {
 					delete(clients, clientUUID)
 				}
 			}
-			// Add event buffer for this event's subscription category if doesn't exit
+			// Add event buffer for this event's subscription category if doesn't exist
 			buf, bufFound := sm.SubEventBuffer[event.Category]
 			if !bufFound {
 				buf = &eventBuffer{
