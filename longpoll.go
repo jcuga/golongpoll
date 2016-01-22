@@ -14,6 +14,12 @@ import (
 	"github.com/nu7hatch/gouuid"
 )
 
+const (
+	// Magic number to represent 'Forever' in
+	// LongpollOptions.EventTimeToLiveSeconds
+	FOREVER = -1001
+)
+
 // LongpollManager provides an interface to interact with the internal
 // longpolling pup-sub goroutine.
 //
@@ -70,40 +76,6 @@ func (m *LongpollManager) Shutdown() {
 	close(m.stopSignal)
 }
 
-// Creates a basic LongpollManager and pub-sub goroutine connected via channels
-// that are exposed via LongpollManager's Publish() function and
-// SubscriptionHandler field which can get used as an http handler function.
-// This basic LongpollManager's default options should cover most client's
-// longpolling needs without having to worry about details.
-// This uses the following options:
-// maxTimeoutSeconds of 180.
-// eventBufferSize size 250 (buffers this many most recent events per
-// subscription category) and loggingEnabled as true.
-//
-// Creates a basic LongpollManager with the default settings.
-// This manager is an interface on top of an internal goroutine that uses
-// channels to support event pub-sub.
-//
-// The default settings should handle most use cases, unless you expect to have
-// a large number of events on a given subscription category within a short
-// amount of time.  Perhaps having more than 50 events a second on a single
-// subscription category would be the time to start considering tweaking the
-// settings via CreateCustomManager.
-//
-// The default settings are:  a max longpoll timeout window of 180 seconds,
-// the per-subscription-category event buffer size of 250 events,
-// and logging enabled.
-func CreateManager() (*LongpollManager, error) {
-	return CreateCustomManager(180, 250, true)
-}
-
-const (
-	// Magic number to represent 'Forever' in
-	// LongpollOptions.EventTimeToLiveSeconds and
-	// LongpollOptions.CategoryTimeToLiveSeconds
-	Forever = -1001
-)
-
 // Options for LongpollManager
 type Options struct {
 	// Whether or not to print logs
@@ -135,24 +107,97 @@ type Options struct {
 	// same subscription category, enabling this means only one of the
 	// clients will see any given event.
 	DeleteEventAfterFirstRetrieval bool
-
-	// How many seconds an empty category remains before being deleted.
-	// Can be zero, meaning the category's EventBuffer gets deleted as soon as
-	// the buffer is empty (no events).
-	// Having a delay before a category's EventBuffer is deleted may be useful
-	// in the event that you are deleting events via
-	// DeleteEventAfterFirstRetrieval and don't want to have to re-create a new
-	// EventBuffer for nearly every single event in that category since an
-	// active longpoller would constantly cause the buffer to be deleted.
-	EmptyCategoryTimeToLiveSeconds int
 }
 
-// TODO: DefaultLongpoll function - creates default options
-// TODO: CustomLongpoll function - takes options as arg
-// TODO: deprecated CreateManager() and CreateCustomManager()
-// TODO: impl those funcs in terms of new ones
-// TODO: implement options.  Delete EventBuffer when empty.  OR when empty and N amount of time?
+// TODO: function comments
+func StartDefaultLongpoll() (*LongpollManager, error) {
+	return StartCustomLongpoll(Options{
+		LoggingEnabled:            true,
+		MaxLongpollTimeoutSeconds: 180,
+		MaxEventBufferSize:        250,
+		// TODO: appropriate default event TTL?
+		EventTimeToLiveSeconds:         60 * 60 * 24, // events retained for 24 hours
+		DeleteEventAfterFirstRetrieval: false,
+	})
+}
 
+// TODO: function comments
+func StartCustomLongpoll(opts Options) (*LongpollManager, error) {
+	if opts.MaxEventBufferSize < 1 {
+		return nil, errors.New("Options.MaxEventBufferSize must be at least 1")
+	}
+	if opts.MaxLongpollTimeoutSeconds < 1 {
+		return nil, errors.New("Options.MaxLongpollTimeoutSeconds must be at least 1")
+	}
+	// TTL must be positive, non-zero, or the magic FOREVER value (a negative const)
+	if opts.EventTimeToLiveSeconds < 1 && opts.EventTimeToLiveSeconds != FOREVER {
+		return nil, errors.New("options.EventTimeToLiveSeconds must be at least 1 or the constant longpoll.FOREVER")
+	}
+	channelSize := 100
+	clientRequestChan := make(chan clientSubscription, channelSize)
+	clientTimeoutChan := make(chan clientCategoryPair, channelSize)
+	events := make(chan lpEvent, channelSize)
+	// never has a send, only a close, so no larger capacity needed:
+	quit := make(chan bool, 1)
+	subManager := subscriptionManager{
+		clientSubscriptions:            clientRequestChan,
+		ClientTimeouts:                 clientTimeoutChan,
+		Events:                         events,
+		ClientSubChannels:              make(map[string]map[uuid.UUID]chan<- []lpEvent),
+		SubEventBuffer:                 make(map[string]*eventBuffer),
+		Quit:                           quit,
+		MaxEventBufferSize:             opts.MaxEventBufferSize,
+		EventTimeToLiveSeconds:         opts.EventTimeToLiveSeconds,
+		DeleteEventAfterFirstRetrieval: opts.DeleteEventAfterFirstRetrieval,
+	}
+	// Start subscription manager
+	go subManager.run(opts.LoggingEnabled)
+	LongpollManager := LongpollManager{
+		&subManager,
+		events,
+		quit,
+		getLongPollSubscriptionHandler(opts.MaxLongpollTimeoutSeconds, clientRequestChan, clientTimeoutChan, opts.LoggingEnabled),
+	}
+	return &LongpollManager, nil
+}
+
+/// DEPRECATED.  Use StartDefaultLongpoll or StartCustomLongpoll instead
+// Creates a basic LongpollManager and pub-sub goroutine connected via channels
+// that are exposed via LongpollManager's Publish() function and
+// SubscriptionHandler field which can get used as an http handler function.
+// This basic LongpollManager's default options should cover most client's
+// longpolling needs without having to worry about details.
+// This uses the following options:
+// maxTimeoutSeconds of 180.
+// eventBufferSize size 250 (buffers this many most recent events per
+// subscription category) and loggingEnabled as true.
+//
+// Creates a basic LongpollManager with the default settings.
+// This manager is an interface on top of an internal goroutine that uses
+// channels to support event pub-sub.
+//
+// The default settings should handle most use cases, unless you expect to have
+// a large number of events on a given subscription category within a short
+// amount of time.  Perhaps having more than 50 events a second on a single
+// subscription category would be the time to start considering tweaking the
+// settings via CreateCustomManager.
+//
+// The default settings are:  a max longpoll timeout window of 180 seconds,
+// the per-subscription-category event buffer size of 250 events,
+// and logging enabled.
+func CreateManager() (*LongpollManager, error) {
+	return StartCustomLongpoll(Options{
+		LoggingEnabled:            true,
+		MaxLongpollTimeoutSeconds: 180,
+		MaxEventBufferSize:        250,
+		// Original behavior maintained, events are never deleted unless they're
+		// pushed out by max buffer size exceeded.
+		EventTimeToLiveSeconds:         FOREVER,
+		DeleteEventAfterFirstRetrieval: false,
+	})
+}
+
+/// DEPRECATED.  Use StartCustomLongpoll instead.
 // Creates a custom LongpollManager and pub-sub goroutine connected via channels
 // that are exposed via LongpollManager's Publish() function and
 // SubscriptionHandler field which can get used as an http handler function.
@@ -170,36 +215,15 @@ type Options struct {
 //
 // loggingEnabled, whether or not log statements are printed out.
 func CreateCustomManager(maxTimeoutSeconds, eventBufferSize int, loggingEnabled bool) (*LongpollManager, error) {
-	if eventBufferSize < 1 {
-		return nil, errors.New("event buffer size must be at least 1")
-	}
-	if maxTimeoutSeconds < 1 {
-		return nil, errors.New("max timeout seconds must be at least 1")
-	}
-	channelSize := 100
-	clientRequestChan := make(chan clientSubscription, channelSize)
-	clientTimeoutChan := make(chan clientCategoryPair, channelSize)
-	events := make(chan lpEvent, channelSize)
-	// never has a send, only a close, so no larger capacity needed:
-	quit := make(chan bool, 1)
-	subManager := subscriptionManager{
-		clientSubscriptions: clientRequestChan,
-		ClientTimeouts:      clientTimeoutChan,
-		Events:              events,
-		ClientSubChannels:   make(map[string]map[uuid.UUID]chan<- []lpEvent),
-		SubEventBuffer:      make(map[string]*eventBuffer),
-		Quit:                quit,
-		MaxEventBufferSize:  eventBufferSize,
-	}
-	// Start subscription manager
-	go subManager.run(loggingEnabled)
-	LongpollManager := LongpollManager{
-		&subManager,
-		events,
-		quit,
-		getLongPollSubscriptionHandler(maxTimeoutSeconds, clientRequestChan, clientTimeoutChan, loggingEnabled),
-	}
-	return &LongpollManager, nil
+	return StartCustomLongpoll(Options{
+		LoggingEnabled:            loggingEnabled,
+		MaxLongpollTimeoutSeconds: maxTimeoutSeconds,
+		MaxEventBufferSize:        eventBufferSize,
+		// Original behavior maintained, events are never deleted unless they're
+		// pushed out by max buffer size exceeded.
+		EventTimeToLiveSeconds:         FOREVER,
+		DeleteEventAfterFirstRetrieval: false,
+	})
 }
 
 type clientSubscription struct {
@@ -344,6 +368,11 @@ type subscriptionManager struct {
 	Quit <-chan bool
 	// How big the buffers are (1-n) before events are discareded FIFO
 	MaxEventBufferSize int
+	// How long events can stay in their eventBuffer
+	EventTimeToLiveSeconds int
+	// Whether or not to delete an event after the first time it is served via
+	// HTTP
+	DeleteEventAfterFirstRetrieval bool
 }
 
 // This should be fired off in its own goroutine
@@ -359,8 +388,11 @@ func (sm *subscriptionManager) run(loggingEnabled bool) error {
 			// without storing it
 			doQueueRequest := true
 			if buf, found := sm.SubEventBuffer[newClient.SubscriptionCategory]; found {
+
+				// TODO: check buffer for expired events past TTL before GetEventsSince
+
 				// We have a buffer for this sub category, check for buffered events
-				if events, err := buf.GetEventsSince(newClient.LastEventTime); err == nil && len(events) > 0 {
+				if events, err := buf.GetEventsSince(newClient.LastEventTime, sm.DeleteEventAfterFirstRetrieval); err == nil && len(events) > 0 {
 					doQueueRequest = false
 					if loggingEnabled {
 						log.Printf("SubscriptionManager: Skip adding client, sending %d events. (Category: %q Client: %s)",
@@ -374,6 +406,8 @@ func (sm *subscriptionManager) run(loggingEnabled bool) error {
 						log.Printf("Error getting events from event buffer: %s.", err)
 					}
 				}
+				// TODO: check if buffer is empty (only necessary if option to delete is set or TTL enabled, if so delete it and it's map entry?
+				// TODO: log that buffer is deleted due to empty and that option set
 			}
 			if doQueueRequest {
 				// Couldn't find any immediate events, store for future:
@@ -387,7 +421,6 @@ func (sm *subscriptionManager) run(loggingEnabled bool) error {
 					log.Printf("SubscriptionManager: Adding Client (Category: %q Client: %s)",
 						newClient.SubscriptionCategory, newClient.ClientUUID.String())
 				}
-				// TODO: unit tests to ensure clients add/skip behavior correct 'n tight
 				categoryClients[newClient.ClientUUID] = newClient.Events
 			}
 		case disconnect := <-sm.ClientTimeouts:
@@ -429,6 +462,14 @@ func (sm *subscriptionManager) run(loggingEnabled bool) error {
 					delete(clients, clientUUID)
 				}
 			}
+
+			// TODO: skip storing event (and creating buffer in first place) if DeleteEventAfterFirstRetrieval == true
+			// and clients were sent an event above^
+			// TODO: log that queue skipped due to option set
+
+			// TODO: check buffer for expired events regardless of whether we're skipping store (but func call trivial if TTL == FOREVER/<1)
+			// but only if buffer exists of course...  Do this before QueueEvent()
+
 			// Add event buffer for this event's subscription category if doesn't exist
 			buf, bufFound := sm.SubEventBuffer[event.Category]
 			if !bufFound {
@@ -453,5 +494,15 @@ func (sm *subscriptionManager) run(loggingEnabled bool) error {
 			}
 			return nil
 		}
+		// TODO: add some time.After case where we purge events with old TTL
+		// by using a datastruct that maps event time to buffer.
+		// this could be oldest event time to buffer mapping structure
+		// where any event older than (now - TTL) gets removed and empty
+		// buffers deleted.  also data struct would need to update in place
+		// which if problematic, perhaps use most-recent time and just delete
+		// entry for empty buffers.  then rely on TTL cleanup when events
+		// are added/fetched.  Technically events can last longer than TTL
+		// by a little bit, but any time a new event or client request on
+		// that category occurs, the old events would first be removed.
 	}
 }

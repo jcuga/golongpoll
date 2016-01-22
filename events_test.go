@@ -125,7 +125,7 @@ func Test_eventBuffer_GetEventsSince(t *testing.T) {
 		}
 	}
 	// Get all events since 9 seconds ago (last 3 events)
-	gotEvents, err := buffer.GetEventsSince(since)
+	gotEvents, err := buffer.GetEventsSince(since, false) // TODO: add tests for doDelete = true
 	if err != nil {
 		t.Fatalf("Got error %q from GetEventsSince with since: %v", err, since)
 	}
@@ -162,7 +162,7 @@ func Test_eventBuffer_GetEventsSince_AllEvents(t *testing.T) {
 		}
 	}
 	// Get all events since 30 seconds ago (all 5 events)
-	gotEvents, err := buffer.GetEventsSince(since)
+	gotEvents, err := buffer.GetEventsSince(since, false) // TODO: add test for doDelete == true
 	if err != nil {
 		t.Fatalf("Got error %q from GetEventsSince with since: %v", err, since)
 	}
@@ -197,7 +197,7 @@ func Test_eventBuffer_GetEventsSince_NoEvents(t *testing.T) {
 		}
 	}
 	// Get all events since ~0 seconds ago  (no events)
-	gotEvents, err := buffer.GetEventsSince(since)
+	gotEvents, err := buffer.GetEventsSince(since, false) // TODO: add test for doDelete == true
 	if err != nil {
 		t.Fatalf("Got error %q from GetEventsSince with since: %v", err, since)
 	}
@@ -215,7 +215,7 @@ func Test_eventBuffer_GetEventsSince_EmptyBuffer(t *testing.T) {
 	// any events in the last 30 seconds
 	since := time.Now().Add(-30 * time.Second)
 	// No events to get.  Not an error, but just no Event results
-	gotEvents, err := buffer.GetEventsSince(since)
+	gotEvents, err := buffer.GetEventsSince(since, false) // TODO: add test for doDelete == True
 	if err != nil {
 		t.Fatalf("Got error %q from GetEventsSince with since: %v", err, since)
 	}
@@ -231,7 +231,7 @@ func Test_eventBuffer_GetEventsSince_InvalidItems(t *testing.T) {
 		10, // max buffer size
 	}
 	buffer.List.PushBack("some string.  clearly not an Event type")
-	events, err := buffer.GetEventsSince(time.Now())
+	events, err := buffer.GetEventsSince(time.Now(), false) // TODO: add test for doDelete == true
 	// This buffer is hosed because there is non-Event data in it.
 	// All calls to GetEventsSince should fail.
 	if err == nil {

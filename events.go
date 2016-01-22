@@ -57,13 +57,18 @@ func (eb *eventBuffer) QueueEvent(event *lpEvent) error {
 	}
 	// Add event to front of our list
 	eb.List.PushFront(event)
+	// TODO: remove events that have expired if TTL != Forever, or have separate func that gets called right before this one is called?
+	// TODO: probably the separate function called before this one...
 	return nil
 }
 
 // GetEventsSnce will return all of the Events in our buffer that occurred after
 // the given input time (since).  Returns an error value if there are any
 // objects that aren't an Event type in the buffer.  (which would be weird...)
-func (eb *eventBuffer) GetEventsSince(since time.Time) ([]lpEvent, error) {
+// Optionally removes returned events from the eventBuffer if told to do so by
+// deleteFetchedEvents argument.
+func (eb *eventBuffer) GetEventsSince(since time.Time,
+	deleteFetchedEvents bool) ([]lpEvent, error) {
 	events := make([]lpEvent, 0)
 	// NOTE: events are bufferd with the most recent event at the front.
 	// So we want to start our search at the front of the buffer and stop
@@ -93,7 +98,9 @@ func (eb *eventBuffer) GetEventsSince(since time.Time) ([]lpEvent, error) {
 	// Now accumulate results in the correct chronological order starting from
 	// our oldest, valid Event that occurrs after 'since'
 	if lastGoodItem != nil {
-		for element := lastGoodItem; element != nil; element = element.Prev() {
+		// Tracked outside of loop conditional to allow delete while iterating:
+		var prev *list.Element
+		for element := lastGoodItem; element != nil; element = prev {
 			event, ok := element.Value.(*lpEvent)
 			if !ok {
 				return events, fmt.Errorf(
@@ -102,6 +109,12 @@ func (eb *eventBuffer) GetEventsSince(since time.Time) ([]lpEvent, error) {
 			// we already know this event is after 'since'
 			events = append(events,
 				lpEvent{event.Timestamp, event.Category, event.Data})
+			// Advance iteration before List.Remove() invalidates element.prev
+			prev = element.Prev()
+			// Now safely remove from list if told to do so:
+			if deleteFetchedEvents {
+				eb.List.Remove(element) // element.Prev() now == nil
+			}
 		}
 	}
 	return events, nil
