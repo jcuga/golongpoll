@@ -810,3 +810,24 @@ func Test_LongpollManager_makeTimeoutResponse(t *testing.T) {
 			timeoutTime, timeoutResp.Timestamp)
 	}
 }
+
+// TODO: test cleanup of SubscriptionManager.ClientSubChannels when
+// there are no more clients after a disconnect
+
+// TODO: test cleanup of SubscriptionManager.ClientSubChannels when
+// an event is sent to all clients and they are thus removed leaving zero in
+// mapped value (which is itself [an empty] map)
+
+// TODO: test the delete event on first fetch behavior
+
+// TODO: test the empty buffer cleanup in all scenarios
+
+// TODO: test the Event TTL cleanup after a subscription queue
+
+// TODO: test the Event TTL cleanup after a event queue
+
+// TODO: test the Event TTL cleanup after skipped event queueing due to delete on first opt
+
+// TODO: test the Event TTL cleanup that happens regularly regardless of client/event activity
+
+// TODO: any additional tests based on code coverage

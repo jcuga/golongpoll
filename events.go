@@ -57,8 +57,6 @@ func (eb *eventBuffer) QueueEvent(event *lpEvent) error {
 	}
 	// Add event to front of our list
 	eb.List.PushFront(event)
-	// TODO: remove events that have expired if TTL != Forever, or have separate func that gets called right before this one is called?
-	// TODO: probably the separate function called before this one...
 	return nil
 }
 

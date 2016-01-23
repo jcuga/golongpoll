@@ -434,10 +434,17 @@ func (sm *subscriptionManager) run() error {
 					log.Printf("SubscriptionManager: Removing Client (Category: %q Client: %s)",
 						disconnect.SubscriptionCategory, disconnect.ClientUUID.String())
 				}
+				// Remove the client sub map entry for this category if there are
+				// zero clients.  This keeps the ClientSubChannels map lean in
+				// the event that there are many categories over time and we
+				// would otherwise keep a bunch of empty sub maps
+				if len(subCategoryClients) == 0 {
+					delete(sm.ClientSubChannels, disconnect.SubscriptionCategory)
+				}
 			} else {
 				// Sub category entry not found.  Weird.  Log this!
 				if sm.LoggingEnabled {
-					log.Printf("Warning: cleint disconnect for non-existing subscription category: %q",
+					log.Printf("Warning: client disconnect for non-existing subscription category: %q",
 						disconnect.SubscriptionCategory)
 				}
 			}
@@ -463,23 +470,20 @@ func (sm *subscriptionManager) run() error {
 						log.Printf("SubscriptionManager: sending event to client: %s", clientUUID.String())
 					}
 					clientChan <- []lpEvent{event}
-					// boot this client subscription since we found events
-					// In longpolling, subscriptions only last until there is
-					// data (happening here) or a timeout (handled by the
-					//disconnect case above)
-					// NOTE: it IS safe to delete map entries as you iterate
-					// SEE: http://stackoverflow.com/questions/23229975/is-it-safe-to-remove-selected-keys-from-golang-map-within-a-range-loop
-					if sm.LoggingEnabled {
-						log.Printf("SubscriptionManager: Removing client after event send: %s", clientUUID.String())
-					}
-					delete(clients, clientUUID)
-					// TODO: remove entry from sm.ClientSubChannels if the sm.ClientSubChannels entry for that category is empty?
-					// TODO: otherwise won't this container always be as big as the set of category ids ever called?
-					// TODO: can this be made even simpler by deleting the sm.ClientSubChannels entry alltogether instead of one
-					// client at a time and then checking if empty.  because wouldn't it always be empty if we remove them???
-					// TODO: if so, move this to outside this loop (after loop) and delete entire category entry for client subscriptions
 				}
-			}
+				// Remove all client subscriptions since we just sent all the
+				// clients an event.  In longpolling, subscriptions only last
+				// until there is data (which just got sent) or a timeout
+				// (which is handled by the disconnect case).
+				// Doing this also keeps the subscription map lean in the event
+				// of many different subscription categories, we don't keep the
+				// trivial/empty map entries.
+				if sm.LoggingEnabled {
+					log.Printf("SubscriptionManager: Removing %d client subscriptions for: %s",
+						len(clients), event.Category)
+				}
+				delete(sm.ClientSubChannels, event.Category)
+			} // else no client subscriptions
 
 			buf, bufFound := sm.SubEventBuffer[event.Category]
 			if doBufferEvents {
@@ -507,8 +511,8 @@ func (sm *subscriptionManager) run() error {
 			}
 			// Perform Event TTL check and empty buffer cleanup:
 			if bufFound && buf != nil {
-				sm.checkExpiredEvents(buf)
-				sm.deleteBufferIfEmpty(buf, event.Category)
+				sm.checkExpiredEvents(buf)                  // TODO: make sure this call is trivial when TTL option == FOREVER
+				sm.deleteBufferIfEmpty(buf, event.Category) // TODO: Make sure trivial if buffer nonempty (I believe this is the case)
 			}
 		case _ = <-sm.Quit:
 			if sm.LoggingEnabled {
