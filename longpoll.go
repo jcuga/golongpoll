@@ -481,11 +481,9 @@ func (sm *subscriptionManager) run() error {
 				}
 			}
 
-			bufFound := false
-			var buf *eventBuffer = nil
+			buf, bufFound := sm.SubEventBuffer[event.Category]
 			if doBufferEvents {
 				// Add event buffer for this event's subscription category if doesn't exist
-				buf, bufFound = sm.SubEventBuffer[event.Category]
 				if !bufFound {
 					buf = &eventBuffer{
 						list.New(),
