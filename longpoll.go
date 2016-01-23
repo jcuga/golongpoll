@@ -111,7 +111,7 @@ type Options struct {
 
 // TODO: function comments
 func StartDefaultLongpoll() (*LongpollManager, error) {
-	return StartCustomLongpoll(Options{
+	return StartLongpoll(Options{
 		LoggingEnabled:            true,
 		MaxLongpollTimeoutSeconds: 180,
 		MaxEventBufferSize:        250,
@@ -122,7 +122,7 @@ func StartDefaultLongpoll() (*LongpollManager, error) {
 }
 
 // TODO: function comments
-func StartCustomLongpoll(opts Options) (*LongpollManager, error) {
+func StartLongpoll(opts Options) (*LongpollManager, error) {
 	if opts.MaxEventBufferSize < 1 {
 		return nil, errors.New("Options.MaxEventBufferSize must be at least 1")
 	}
@@ -146,12 +146,13 @@ func StartCustomLongpoll(opts Options) (*LongpollManager, error) {
 		ClientSubChannels:              make(map[string]map[uuid.UUID]chan<- []lpEvent),
 		SubEventBuffer:                 make(map[string]*eventBuffer),
 		Quit:                           quit,
+		LoggingEnabled:                 opts.LoggingEnabled,
 		MaxEventBufferSize:             opts.MaxEventBufferSize,
 		EventTimeToLiveSeconds:         opts.EventTimeToLiveSeconds,
 		DeleteEventAfterFirstRetrieval: opts.DeleteEventAfterFirstRetrieval,
 	}
 	// Start subscription manager
-	go subManager.run(opts.LoggingEnabled)
+	go subManager.run()
 	LongpollManager := LongpollManager{
 		&subManager,
 		events,
@@ -186,7 +187,7 @@ func StartCustomLongpoll(opts Options) (*LongpollManager, error) {
 // the per-subscription-category event buffer size of 250 events,
 // and logging enabled.
 func CreateManager() (*LongpollManager, error) {
-	return StartCustomLongpoll(Options{
+	return StartLongpoll(Options{
 		LoggingEnabled:            true,
 		MaxLongpollTimeoutSeconds: 180,
 		MaxEventBufferSize:        250,
@@ -215,7 +216,7 @@ func CreateManager() (*LongpollManager, error) {
 //
 // loggingEnabled, whether or not log statements are printed out.
 func CreateCustomManager(maxTimeoutSeconds, eventBufferSize int, loggingEnabled bool) (*LongpollManager, error) {
-	return StartCustomLongpoll(Options{
+	return StartLongpoll(Options{
 		LoggingEnabled:            loggingEnabled,
 		MaxLongpollTimeoutSeconds: maxTimeoutSeconds,
 		MaxEventBufferSize:        eventBufferSize,
@@ -365,7 +366,8 @@ type subscriptionManager struct {
 	ClientSubChannels map[string]map[uuid.UUID]chan<- []lpEvent
 	SubEventBuffer    map[string]*eventBuffer
 	// channel to inform manager to stop running
-	Quit <-chan bool
+	Quit           <-chan bool
+	LoggingEnabled bool
 	// How big the buffers are (1-n) before events are discareded FIFO
 	MaxEventBufferSize int
 	// How long events can stay in their eventBuffer
@@ -376,8 +378,8 @@ type subscriptionManager struct {
 }
 
 // This should be fired off in its own goroutine
-func (sm *subscriptionManager) run(loggingEnabled bool) error {
-	if loggingEnabled {
+func (sm *subscriptionManager) run() error {
+	if sm.LoggingEnabled {
 		log.Printf("SubscriptionManager: Starting run.")
 	}
 	for {
@@ -388,13 +390,12 @@ func (sm *subscriptionManager) run(loggingEnabled bool) error {
 			// without storing it
 			doQueueRequest := true
 			if buf, found := sm.SubEventBuffer[newClient.SubscriptionCategory]; found {
-
-				// TODO: check buffer for expired events past TTL before GetEventsSince
-
+				// First clean up anything that expired
+				sm.checkExpiredEvents(buf)
 				// We have a buffer for this sub category, check for buffered events
 				if events, err := buf.GetEventsSince(newClient.LastEventTime, sm.DeleteEventAfterFirstRetrieval); err == nil && len(events) > 0 {
 					doQueueRequest = false
-					if loggingEnabled {
+					if sm.LoggingEnabled {
 						log.Printf("SubscriptionManager: Skip adding client, sending %d events. (Category: %q Client: %s)",
 							len(events), newClient.SubscriptionCategory, newClient.ClientUUID.String())
 					}
@@ -402,12 +403,13 @@ func (sm *subscriptionManager) run(loggingEnabled bool) error {
 					// and end long poll request, so no need to have manager store
 					newClient.Events <- events
 				} else if err != nil {
-					if loggingEnabled {
+					if sm.LoggingEnabled {
 						log.Printf("Error getting events from event buffer: %s.", err)
 					}
 				}
-				// TODO: check if buffer is empty (only necessary if option to delete is set or TTL enabled, if so delete it and it's map entry?
-				// TODO: log that buffer is deleted due to empty and that option set
+				// Buffer Could have been emptied due to the  DeleteEventAfterFirstRetrieval
+				// or EventTimeToLiveSeconds options.
+				sm.deleteBufferIfEmpty(buf, newClient.SubscriptionCategory)
 			}
 			if doQueueRequest {
 				// Couldn't find any immediate events, store for future:
@@ -417,7 +419,7 @@ func (sm *subscriptionManager) run(loggingEnabled bool) error {
 					categoryClients = make(map[uuid.UUID]chan<- []lpEvent)
 					sm.ClientSubChannels[newClient.SubscriptionCategory] = categoryClients
 				}
-				if loggingEnabled {
+				if sm.LoggingEnabled {
 					log.Printf("SubscriptionManager: Adding Client (Category: %q Client: %s)",
 						newClient.SubscriptionCategory, newClient.ClientUUID.String())
 				}
@@ -428,25 +430,36 @@ func (sm *subscriptionManager) run(loggingEnabled bool) error {
 				// NOTE:  The delete function doesn't return anything, and will do nothing if the
 				// specified key doesn't exist.
 				delete(subCategoryClients, disconnect.ClientUUID)
-				if loggingEnabled {
+				if sm.LoggingEnabled {
 					log.Printf("SubscriptionManager: Removing Client (Category: %q Client: %s)",
 						disconnect.SubscriptionCategory, disconnect.ClientUUID.String())
 				}
 			} else {
 				// Sub category entry not found.  Weird.  Log this!
-				if loggingEnabled {
+				if sm.LoggingEnabled {
 					log.Printf("Warning: cleint disconnect for non-existing subscription category: %q",
 						disconnect.SubscriptionCategory)
 				}
 			}
 		case event := <-sm.Events:
+			doBufferEvents := true
 			// Send event to any listening client's channels
 			if clients, found := sm.ClientSubChannels[event.Category]; found && len(clients) > 0 {
-				if loggingEnabled {
+				if sm.DeleteEventAfterFirstRetrieval {
+					// Configured to delete events from buffer after first retrieval by clients.
+					// Now that we already have clients receiving, don't bother
+					// buffering the event.
+					// NOTE: this is wrapped by condition that clients are found
+					// if no clients are found, we queue event even when we have
+					// the delete-on-first option set because no-one has recieved
+					// the event yet.
+					doBufferEvents = false
+				}
+				if sm.LoggingEnabled {
 					log.Printf("SubscriptionManager: forwarding event to %d clients. (event: %v)", len(clients), event)
 				}
 				for clientUUID, clientChan := range clients {
-					if loggingEnabled {
+					if sm.LoggingEnabled {
 						log.Printf("SubscriptionManager: sending event to client: %s", clientUUID.String())
 					}
 					clientChan <- []lpEvent{event}
@@ -456,40 +469,51 @@ func (sm *subscriptionManager) run(loggingEnabled bool) error {
 					//disconnect case above)
 					// NOTE: it IS safe to delete map entries as you iterate
 					// SEE: http://stackoverflow.com/questions/23229975/is-it-safe-to-remove-selected-keys-from-golang-map-within-a-range-loop
-					if loggingEnabled {
+					if sm.LoggingEnabled {
 						log.Printf("SubscriptionManager: Removing client after event send: %s", clientUUID.String())
 					}
 					delete(clients, clientUUID)
+					// TODO: remove entry from sm.ClientSubChannels if the sm.ClientSubChannels entry for that category is empty?
+					// TODO: otherwise won't this container always be as big as the set of category ids ever called?
+					// TODO: can this be made even simpler by deleting the sm.ClientSubChannels entry alltogether instead of one
+					// client at a time and then checking if empty.  because wouldn't it always be empty if we remove them???
+					// TODO: if so, move this to outside this loop (after loop) and delete entire category entry for client subscriptions
 				}
 			}
 
-			// TODO: skip storing event (and creating buffer in first place) if DeleteEventAfterFirstRetrieval == true
-			// and clients were sent an event above^
-			// TODO: log that queue skipped due to option set
-
-			// TODO: check buffer for expired events regardless of whether we're skipping store (but func call trivial if TTL == FOREVER/<1)
-			// but only if buffer exists of course...  Do this before QueueEvent()
-
-			// Add event buffer for this event's subscription category if doesn't exist
-			buf, bufFound := sm.SubEventBuffer[event.Category]
-			if !bufFound {
-				buf = &eventBuffer{
-					list.New(),
-					sm.MaxEventBufferSize,
+			bufFound := false
+			var buf *eventBuffer = nil
+			if doBufferEvents {
+				// Add event buffer for this event's subscription category if doesn't exist
+				buf, bufFound = sm.SubEventBuffer[event.Category]
+				if !bufFound {
+					buf = &eventBuffer{
+						list.New(),
+						sm.MaxEventBufferSize,
+					}
+					sm.SubEventBuffer[event.Category] = buf
 				}
-				sm.SubEventBuffer[event.Category] = buf
-			}
-			if loggingEnabled {
-				log.Printf("SubscriptionManager: queue event: %v.", event)
-			}
-			// queue event in event buffer
-			if qErr := buf.QueueEvent(&event); qErr != nil {
-				if loggingEnabled {
-					log.Printf("Error: failed to queue event.  err: %s", qErr)
+				if sm.LoggingEnabled {
+					log.Printf("SubscriptionManager: queue event: %v.", event)
 				}
+				// queue event in event buffer
+				if qErr := buf.QueueEvent(&event); qErr != nil {
+					if sm.LoggingEnabled {
+						log.Printf("Error: failed to queue event.  err: %s", qErr)
+					}
+				}
+			} else {
+				if sm.LoggingEnabled {
+					log.Printf("SubscriptionManager: DeleteEventAfterFirstRetrieval: SKIP queue event: %v.", event)
+				}
+			}
+			// Perform Event TTL check and empty buffer cleanup:
+			if bufFound && buf != nil {
+				sm.checkExpiredEvents(buf)
+				sm.deleteBufferIfEmpty(buf, event.Category)
 			}
 		case _ = <-sm.Quit:
-			if loggingEnabled {
+			if sm.LoggingEnabled {
 				log.Printf("SubscriptionManager: received quit signal, stopping.")
 			}
 			return nil
@@ -504,5 +528,27 @@ func (sm *subscriptionManager) run(loggingEnabled bool) error {
 		// are added/fetched.  Technically events can last longer than TTL
 		// by a little bit, but any time a new event or client request on
 		// that category occurs, the old events would first be removed.
+		// TODO: remove any empty buffers
 	}
+}
+
+func (sm *subscriptionManager) deleteBufferIfEmpty(buf *eventBuffer, category string) error {
+	if buf.List.Len() == 0 {
+		delete(sm.SubEventBuffer, category)
+		if sm.LoggingEnabled {
+			log.Printf("Deleting empty eventBuffer for category: %s", category)
+		}
+	}
+	return nil
+}
+
+func (sm *subscriptionManager) checkExpiredEvents(buf *eventBuffer) error {
+	// TODO: implement
+	// TODO: make this func also work when doing periodic check against all
+	// buffers.  Will this involve another data struct with timestamps?
+	// if so, can we just do a timestamp check on that data struct and skip
+	// having to check event timestamps one by one?
+	// TODO: on the other hand, would it be just as fast to check timestamp of oldest event in buffer?
+	// TODO: if error ever possible have calling code check value
+	return nil
 }
