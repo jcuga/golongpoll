@@ -385,139 +385,16 @@ func (sm *subscriptionManager) run() error {
 	for {
 		select {
 		case newClient := <-sm.clientSubscriptions:
-			// before storing client sub request, see if we already have data in
-			// the corresponding event buffer that we can use to fufil request
-			// without storing it
-			doQueueRequest := true
-			if buf, found := sm.SubEventBuffer[newClient.SubscriptionCategory]; found {
-				// First clean up anything that expired
-				sm.checkExpiredEvents(buf)
-				// We have a buffer for this sub category, check for buffered events
-				if events, err := buf.GetEventsSince(newClient.LastEventTime, sm.DeleteEventAfterFirstRetrieval); err == nil && len(events) > 0 {
-					doQueueRequest = false
-					if sm.LoggingEnabled {
-						log.Printf("SubscriptionManager: Skip adding client, sending %d events. (Category: %q Client: %s)",
-							len(events), newClient.SubscriptionCategory, newClient.ClientUUID.String())
-					}
-					// Send client buffered events.  Client will immediately consume
-					// and end long poll request, so no need to have manager store
-					newClient.Events <- events
-				} else if err != nil {
-					if sm.LoggingEnabled {
-						log.Printf("Error getting events from event buffer: %s.", err)
-					}
-				}
-				// Buffer Could have been emptied due to the  DeleteEventAfterFirstRetrieval
-				// or EventTimeToLiveSeconds options.
-				sm.deleteBufferIfEmpty(buf, newClient.SubscriptionCategory)
-			}
-			if doQueueRequest {
-				// Couldn't find any immediate events, store for future:
-				categoryClients, found := sm.ClientSubChannels[newClient.SubscriptionCategory]
-				if !found {
-					// first request for this sub category, add client chan map entry
-					categoryClients = make(map[uuid.UUID]chan<- []lpEvent)
-					sm.ClientSubChannels[newClient.SubscriptionCategory] = categoryClients
-				}
-				if sm.LoggingEnabled {
-					log.Printf("SubscriptionManager: Adding Client (Category: %q Client: %s)",
-						newClient.SubscriptionCategory, newClient.ClientUUID.String())
-				}
-				categoryClients[newClient.ClientUUID] = newClient.Events
-			}
-		case disconnect := <-sm.ClientTimeouts:
-			if subCategoryClients, found := sm.ClientSubChannels[disconnect.SubscriptionCategory]; found {
-				// NOTE:  The delete function doesn't return anything, and will do nothing if the
-				// specified key doesn't exist.
-				delete(subCategoryClients, disconnect.ClientUUID)
-				if sm.LoggingEnabled {
-					log.Printf("SubscriptionManager: Removing Client (Category: %q Client: %s)",
-						disconnect.SubscriptionCategory, disconnect.ClientUUID.String())
-				}
-				// Remove the client sub map entry for this category if there are
-				// zero clients.  This keeps the ClientSubChannels map lean in
-				// the event that there are many categories over time and we
-				// would otherwise keep a bunch of empty sub maps
-				if len(subCategoryClients) == 0 {
-					delete(sm.ClientSubChannels, disconnect.SubscriptionCategory)
-				}
-			} else {
-				// Sub category entry not found.  Weird.  Log this!
-				if sm.LoggingEnabled {
-					log.Printf("Warning: client disconnect for non-existing subscription category: %q",
-						disconnect.SubscriptionCategory)
-				}
-			}
+			sm.handleNewClient(&newClient)
+		case disconnected := <-sm.ClientTimeouts:
+			sm.handleClientDisconnect(&disconnected)
 		case event := <-sm.Events:
-			doBufferEvents := true
-			// Send event to any listening client's channels
-			if clients, found := sm.ClientSubChannels[event.Category]; found && len(clients) > 0 {
-				if sm.DeleteEventAfterFirstRetrieval {
-					// Configured to delete events from buffer after first retrieval by clients.
-					// Now that we already have clients receiving, don't bother
-					// buffering the event.
-					// NOTE: this is wrapped by condition that clients are found
-					// if no clients are found, we queue event even when we have
-					// the delete-on-first option set because no-one has recieved
-					// the event yet.
-					doBufferEvents = false
-				}
-				if sm.LoggingEnabled {
-					log.Printf("SubscriptionManager: forwarding event to %d clients. (event: %v)", len(clients), event)
-				}
-				for clientUUID, clientChan := range clients {
-					if sm.LoggingEnabled {
-						log.Printf("SubscriptionManager: sending event to client: %s", clientUUID.String())
-					}
-					clientChan <- []lpEvent{event}
-				}
-				// Remove all client subscriptions since we just sent all the
-				// clients an event.  In longpolling, subscriptions only last
-				// until there is data (which just got sent) or a timeout
-				// (which is handled by the disconnect case).
-				// Doing this also keeps the subscription map lean in the event
-				// of many different subscription categories, we don't keep the
-				// trivial/empty map entries.
-				if sm.LoggingEnabled {
-					log.Printf("SubscriptionManager: Removing %d client subscriptions for: %s",
-						len(clients), event.Category)
-				}
-				delete(sm.ClientSubChannels, event.Category)
-			} // else no client subscriptions
-
-			buf, bufFound := sm.SubEventBuffer[event.Category]
-			if doBufferEvents {
-				// Add event buffer for this event's subscription category if doesn't exist
-				if !bufFound {
-					buf = &eventBuffer{
-						list.New(),
-						sm.MaxEventBufferSize,
-					}
-					sm.SubEventBuffer[event.Category] = buf
-				}
-				if sm.LoggingEnabled {
-					log.Printf("SubscriptionManager: queue event: %v.", event)
-				}
-				// queue event in event buffer
-				if qErr := buf.QueueEvent(&event); qErr != nil {
-					if sm.LoggingEnabled {
-						log.Printf("Error: failed to queue event.  err: %s", qErr)
-					}
-				}
-			} else {
-				if sm.LoggingEnabled {
-					log.Printf("SubscriptionManager: DeleteEventAfterFirstRetrieval: SKIP queue event: %v.", event)
-				}
-			}
-			// Perform Event TTL check and empty buffer cleanup:
-			if bufFound && buf != nil {
-				sm.checkExpiredEvents(buf)                  // TODO: make sure this call is trivial when TTL option == FOREVER
-				sm.deleteBufferIfEmpty(buf, event.Category) // TODO: Make sure trivial if buffer nonempty (I believe this is the case)
-			}
+			sm.handleNewEvent(&event)
 		case _ = <-sm.Quit:
 			if sm.LoggingEnabled {
 				log.Printf("SubscriptionManager: received quit signal, stopping.")
 			}
+			// break out of our infinite loop/select
 			return nil
 		}
 		// TODO: add some time.After case where we purge events with old TTL
@@ -532,6 +409,153 @@ func (sm *subscriptionManager) run() error {
 		// that category occurs, the old events would first be removed.
 		// TODO: remove any empty buffers
 	}
+}
+
+func (sm *subscriptionManager) handleNewClient(newClient *clientSubscription) error {
+	var funcErr error
+	// before storing client sub request, see if we already have data in
+	// the corresponding event buffer that we can use to fufil request
+	// without storing it
+	doQueueRequest := true
+	if buf, found := sm.SubEventBuffer[newClient.SubscriptionCategory]; found {
+		// First clean up anything that expired
+		sm.checkExpiredEvents(buf)
+		// We have a buffer for this sub category, check for buffered events
+		if events, err := buf.GetEventsSince(newClient.LastEventTime,
+			sm.DeleteEventAfterFirstRetrieval); err == nil && len(events) > 0 {
+			doQueueRequest = false
+			if sm.LoggingEnabled {
+				log.Printf("SubscriptionManager: Skip adding client, sending %d events. (Category: %q Client: %s)",
+					len(events), newClient.SubscriptionCategory, newClient.ClientUUID.String())
+			}
+			// Send client buffered events.  Client will immediately consume
+			// and end long poll request, so no need to have manager store
+			newClient.Events <- events
+		} else if err != nil {
+			funcErr = fmt.Errorf("Error getting events from event buffer: %s.", err)
+			if sm.LoggingEnabled {
+				log.Printf("Error getting events from event buffer: %s.", err)
+			}
+		}
+		// Buffer Could have been emptied due to the  DeleteEventAfterFirstRetrieval
+		// or EventTimeToLiveSeconds options.
+		sm.deleteBufferIfEmpty(buf, newClient.SubscriptionCategory)
+	}
+	if doQueueRequest {
+		// Couldn't find any immediate events, store for future:
+		categoryClients, found := sm.ClientSubChannels[newClient.SubscriptionCategory]
+		if !found {
+			// first request for this sub category, add client chan map entry
+			categoryClients = make(map[uuid.UUID]chan<- []lpEvent)
+			sm.ClientSubChannels[newClient.SubscriptionCategory] = categoryClients
+		}
+		if sm.LoggingEnabled {
+			log.Printf("SubscriptionManager: Adding Client (Category: %q Client: %s)",
+				newClient.SubscriptionCategory, newClient.ClientUUID.String())
+		}
+		categoryClients[newClient.ClientUUID] = newClient.Events
+	}
+	return funcErr
+}
+
+func (sm *subscriptionManager) handleClientDisconnect(disconnected *clientCategoryPair) error {
+	var funcErr error
+	if subCategoryClients, found := sm.ClientSubChannels[disconnected.SubscriptionCategory]; found {
+		// NOTE:  The delete function doesn't return anything, and will do nothing if the
+		// specified key doesn't exist.
+		delete(subCategoryClients, disconnected.ClientUUID)
+		if sm.LoggingEnabled {
+			log.Printf("SubscriptionManager: Removing Client (Category: %q Client: %s)",
+				disconnected.SubscriptionCategory, disconnected.ClientUUID.String())
+		}
+		// Remove the client sub map entry for this category if there are
+		// zero clients.  This keeps the ClientSubChannels map lean in
+		// the event that there are many categories over time and we
+		// would otherwise keep a bunch of empty sub maps
+		if len(subCategoryClients) == 0 {
+			delete(sm.ClientSubChannels, disconnected.SubscriptionCategory)
+		}
+	} else {
+		// Sub category entry not found.  Weird.  Log this!
+		if sm.LoggingEnabled {
+			log.Printf("Warning: client disconnect for non-existing subscription category: %q",
+				disconnected.SubscriptionCategory)
+		}
+		funcErr = fmt.Errorf("Client disconnect for non-existing subscription category: %q",
+			disconnected.SubscriptionCategory)
+	}
+	return funcErr
+}
+
+func (sm *subscriptionManager) handleNewEvent(newEvent *lpEvent) error {
+	var funcErr error
+	doBufferEvents := true
+	// Send event to any listening client's channels
+	if clients, found := sm.ClientSubChannels[newEvent.Category]; found && len(clients) > 0 {
+		if sm.DeleteEventAfterFirstRetrieval {
+			// Configured to delete events from buffer after first retrieval by clients.
+			// Now that we already have clients receiving, don't bother
+			// buffering the event.
+			// NOTE: this is wrapped by condition that clients are found
+			// if no clients are found, we queue event even when we have
+			// the delete-on-first option set because no-one has recieved
+			// the event yet.
+			doBufferEvents = false
+		}
+		if sm.LoggingEnabled {
+			log.Printf("SubscriptionManager: forwarding event to %d clients. (event: %v)", len(clients), newEvent)
+		}
+		for clientUUID, clientChan := range clients {
+			if sm.LoggingEnabled {
+				log.Printf("SubscriptionManager: sending event to client: %s", clientUUID.String())
+			}
+			clientChan <- []lpEvent{*newEvent}
+		}
+		// Remove all client subscriptions since we just sent all the
+		// clients an event.  In longpolling, subscriptions only last
+		// until there is data (which just got sent) or a timeout
+		// (which is handled by the disconnect case).
+		// Doing this also keeps the subscription map lean in the event
+		// of many different subscription categories, we don't keep the
+		// trivial/empty map entries.
+		if sm.LoggingEnabled {
+			log.Printf("SubscriptionManager: Removing %d client subscriptions for: %s",
+				len(clients), newEvent.Category)
+		}
+		delete(sm.ClientSubChannels, newEvent.Category)
+	} // else no client subscriptions
+
+	buf, bufFound := sm.SubEventBuffer[newEvent.Category]
+	if doBufferEvents {
+		// Add event buffer for this event's subscription category if doesn't exist
+		if !bufFound {
+			buf = &eventBuffer{
+				list.New(),
+				sm.MaxEventBufferSize,
+			}
+			sm.SubEventBuffer[newEvent.Category] = buf
+		}
+		if sm.LoggingEnabled {
+			log.Printf("SubscriptionManager: queue event: %v.", newEvent)
+		}
+		// queue event in event buffer
+		if qErr := buf.QueueEvent(newEvent); qErr != nil {
+			if sm.LoggingEnabled {
+				log.Printf("Error: failed to queue event.  err: %s", qErr)
+			}
+			funcErr = fmt.Errorf("Error: failed to queue event.  err: %s", qErr)
+		}
+	} else {
+		if sm.LoggingEnabled {
+			log.Printf("SubscriptionManager: DeleteEventAfterFirstRetrieval: SKIP queue event: %v.", newEvent)
+		}
+	}
+	// Perform Event TTL check and empty buffer cleanup:
+	if bufFound && buf != nil {
+		sm.checkExpiredEvents(buf)                     // TODO: make sure this call is trivial when TTL option == FOREVER
+		sm.deleteBufferIfEmpty(buf, newEvent.Category) // TODO: Make sure trivial if buffer nonempty (I believe this is the case)
+	}
+	return funcErr
 }
 
 func (sm *subscriptionManager) deleteBufferIfEmpty(buf *eventBuffer, category string) error {
