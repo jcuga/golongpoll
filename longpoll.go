@@ -109,6 +109,9 @@ type Options struct {
 	DeleteEventAfterFirstRetrieval bool
 }
 
+// TODO: move deprecated functions to their own file called longpoll_deprecated.go
+// TODO: log warning whenever deprecated func used
+
 // TODO: function comments
 func StartDefaultLongpoll() (*LongpollManager, error) {
 	return StartLongpoll(Options{
@@ -129,6 +132,7 @@ func StartLongpoll(opts Options) (*LongpollManager, error) {
 	if opts.MaxLongpollTimeoutSeconds < 1 {
 		return nil, errors.New("Options.MaxLongpollTimeoutSeconds must be at least 1")
 	}
+	// TODO: if TTL is zero, default to FOREVER?
 	// TTL must be positive, non-zero, or the magic FOREVER value (a negative const)
 	if opts.EventTimeToLiveSeconds < 1 && opts.EventTimeToLiveSeconds != FOREVER {
 		return nil, errors.New("options.EventTimeToLiveSeconds must be at least 1 or the constant longpoll.FOREVER")
@@ -532,6 +536,7 @@ func (sm *subscriptionManager) handleNewEvent(newEvent *lpEvent) error {
 			buf = &eventBuffer{
 				list.New(),
 				sm.MaxEventBufferSize,
+				timeToEpochMilliseconds(time.Now()),
 			}
 			sm.SubEventBuffer[newEvent.Category] = buf
 		}
@@ -552,8 +557,8 @@ func (sm *subscriptionManager) handleNewEvent(newEvent *lpEvent) error {
 	}
 	// Perform Event TTL check and empty buffer cleanup:
 	if bufFound && buf != nil {
-		sm.checkExpiredEvents(buf)                     // TODO: make sure this call is trivial when TTL option == FOREVER
-		sm.deleteBufferIfEmpty(buf, newEvent.Category) // TODO: Make sure trivial if buffer nonempty (I believe this is the case)
+		sm.checkExpiredEvents(buf)
+		sm.deleteBufferIfEmpty(buf, newEvent.Category)
 	}
 	return funcErr
 }
@@ -569,12 +574,12 @@ func (sm *subscriptionManager) deleteBufferIfEmpty(buf *eventBuffer, category st
 }
 
 func (sm *subscriptionManager) checkExpiredEvents(buf *eventBuffer) error {
-	// TODO: implement
-	// TODO: make this func also work when doing periodic check against all
-	// buffers.  Will this involve another data struct with timestamps?
-	// if so, can we just do a timestamp check on that data struct and skip
-	// having to check event timestamps one by one?
-	// TODO: on the other hand, would it be just as fast to check timestamp of oldest event in buffer?
-	// TODO: if error ever possible have calling code check value
-	return nil
+	if sm.EventTimeToLiveSeconds == FOREVER {
+		// Events can never expire. bail out early instead of wasting time.
+		return nil
+	}
+	// determine what time is considered the threshold for expiration
+	now_ms := timeToEpochMilliseconds(time.Now())
+	expiration_time := now_ms - int64(sm.EventTimeToLiveSeconds*1000)
+	return buf.DeleteEventsOlderThan(expiration_time)
 }

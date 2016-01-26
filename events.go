@@ -39,6 +39,10 @@ type eventResponse struct {
 type eventBuffer struct {
 	*list.List
 	MaxBufferSize int
+	// keeping track of this allows for more efficient event TTL expiration purges:
+	// time in milliseconds since epoch since thats what lpEvent types use
+	// for Timestamps
+	oldestEventTime int64
 }
 
 // QueueEvent adds a new longpoll Event to the front of our buffer and removes
@@ -57,6 +61,15 @@ func (eb *eventBuffer) QueueEvent(event *lpEvent) error {
 	}
 	// Add event to front of our list
 	eb.List.PushFront(event)
+	// Update oldestEventTime with the time of our least recent event (at back)
+	// keeping track of this allows for more efficient event TTL expiration purges
+	if lastElement := eb.List.Back(); lastElement != nil {
+		lastEvent, ok := lastElement.Value.(*lpEvent)
+		if !ok {
+			return fmt.Errorf("Found non-event type in event buffer.")
+		}
+		eb.oldestEventTime = lastEvent.Timestamp
+	}
 	return nil
 }
 
@@ -116,4 +129,37 @@ func (eb *eventBuffer) GetEventsSince(since time.Time,
 		}
 	}
 	return events, nil
+}
+
+func (eb *eventBuffer) DeleteEventsOlderThan(olderThanTimeMs int64) error {
+	if eb.List.Len() == 0 || eb.oldestEventTime > olderThanTimeMs {
+		// Either no events or the the oldest event is more recent than
+		// olderThanTimeMs, so nothing  could possibly be expired.
+		// skip searching list
+		return nil
+	}
+	// Search list in reverse (starting from the back) removing expired events
+	// and updating eb.oldestEventTime as we remove stale events.
+	// NOTE: we iterate over list in reverse since oldest elements are at
+	// the back, newest up front.
+	var prev *list.Element
+	for element := eb.List.Back(); element != nil; element = prev {
+		event, ok := element.Value.(*lpEvent)
+		if !ok {
+			return fmt.Errorf("Found non-event type in event buffer.")
+		}
+		// Advance iteration before List.Remove() invalidates element.prev
+		prev = element.Prev()
+		// Update oldestEventTime to the current event's Timestamp
+		eb.oldestEventTime = event.Timestamp
+		// Now able to safely remove from list event is too old:
+		if event.Timestamp <= olderThanTimeMs {
+			eb.List.Remove(element) // element.Prev() now == nil
+		} else {
+			// element is too new, stop checking since events are only going to
+			// get even more recent as we get closer to the front of the list
+			return nil
+		}
+	}
+	return nil
 }

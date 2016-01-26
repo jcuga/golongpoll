@@ -11,6 +11,7 @@ func Test_eventBuffer_QueueEvent(t *testing.T) {
 	buffer := eventBuffer{
 		list.New(),
 		10, // max buffer size
+		timeToEpochMilliseconds(time.Now()),
 	}
 	var events = []lpEvent{
 		lpEvent{timeToEpochMilliseconds(time.Now().Add(-10 * time.Second)), "red", "some string data 1"},
@@ -49,6 +50,7 @@ func Test_eventBuffer_QueueEvent_MaxBufferReached(t *testing.T) {
 	buffer := eventBuffer{
 		list.New(),
 		max, // max buffer size
+		timeToEpochMilliseconds(time.Now()),
 	}
 	// Create moreThanMax events
 	events := make([]lpEvent, 0)
@@ -94,6 +96,7 @@ func Test_eventBuffer_QueueEvent_InvalidInput(t *testing.T) {
 	buffer := eventBuffer{
 		list.New(),
 		10, // max buffer size
+		timeToEpochMilliseconds(time.Now()),
 	}
 	// You can't queue nil.  And trying to do so shouldn't change the buffer.
 	if err := buffer.QueueEvent(nil); err == nil {
@@ -110,6 +113,7 @@ func Test_eventBuffer_GetEventsSince(t *testing.T) {
 	buffer := eventBuffer{
 		list.New(),
 		10, // max buffer size
+		timeToEpochMilliseconds(time.Now()),
 	}
 	// Three of the events in our buffer occurred after our since param
 	since := time.Now().Add(-9 * time.Second)
@@ -147,6 +151,7 @@ func Test_eventBuffer_GetEventsSince_AllEvents(t *testing.T) {
 	buffer := eventBuffer{
 		list.New(),
 		10, // max buffer size
+		timeToEpochMilliseconds(time.Now()),
 	}
 	// All of the events in the buffer occurred after our since param
 	since := time.Now().Add(-30 * time.Second)
@@ -182,6 +187,7 @@ func Test_eventBuffer_GetEventsSince_NoEvents(t *testing.T) {
 	buffer := eventBuffer{
 		list.New(),
 		10, // max buffer size
+		timeToEpochMilliseconds(time.Now()),
 	}
 	// None of the events in the buffer occurred after our since param
 	since := time.Now()
@@ -211,6 +217,7 @@ func Test_eventBuffer_GetEventsSince_EmptyBuffer(t *testing.T) {
 	buffer := eventBuffer{
 		list.New(),
 		10, // max buffer size
+		timeToEpochMilliseconds(time.Now()),
 	}
 	// any events in the last 30 seconds
 	since := time.Now().Add(-30 * time.Second)
@@ -229,6 +236,7 @@ func Test_eventBuffer_GetEventsSince_InvalidItems(t *testing.T) {
 	buffer := eventBuffer{
 		list.New(),
 		10, // max buffer size
+		timeToEpochMilliseconds(time.Now()),
 	}
 	buffer.List.PushBack("some string.  clearly not an Event type")
 	events, err := buffer.GetEventsSince(time.Now(), false) // TODO: add test for doDelete == true
@@ -241,3 +249,5 @@ func Test_eventBuffer_GetEventsSince_InvalidItems(t *testing.T) {
 		t.Fatalf("Expected empty events, got len: %d", len(events))
 	}
 }
+
+// TODO: test eventBuffer.oldestEventTime
