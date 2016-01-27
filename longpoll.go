@@ -109,9 +109,6 @@ type Options struct {
 	DeleteEventAfterFirstRetrieval bool
 }
 
-// TODO: move deprecated functions to their own file called longpoll_deprecated.go
-// TODO: log warning whenever deprecated func used
-
 // TODO: function comments
 func StartDefaultLongpoll() (*LongpollManager, error) {
 	return StartLongpoll(Options{
@@ -164,71 +161,6 @@ func StartLongpoll(opts Options) (*LongpollManager, error) {
 		getLongPollSubscriptionHandler(opts.MaxLongpollTimeoutSeconds, clientRequestChan, clientTimeoutChan, opts.LoggingEnabled),
 	}
 	return &LongpollManager, nil
-}
-
-/// DEPRECATED.  Use StartDefaultLongpoll or StartCustomLongpoll instead
-// Creates a basic LongpollManager and pub-sub goroutine connected via channels
-// that are exposed via LongpollManager's Publish() function and
-// SubscriptionHandler field which can get used as an http handler function.
-// This basic LongpollManager's default options should cover most client's
-// longpolling needs without having to worry about details.
-// This uses the following options:
-// maxTimeoutSeconds of 180.
-// eventBufferSize size 250 (buffers this many most recent events per
-// subscription category) and loggingEnabled as true.
-//
-// Creates a basic LongpollManager with the default settings.
-// This manager is an interface on top of an internal goroutine that uses
-// channels to support event pub-sub.
-//
-// The default settings should handle most use cases, unless you expect to have
-// a large number of events on a given subscription category within a short
-// amount of time.  Perhaps having more than 50 events a second on a single
-// subscription category would be the time to start considering tweaking the
-// settings via CreateCustomManager.
-//
-// The default settings are:  a max longpoll timeout window of 180 seconds,
-// the per-subscription-category event buffer size of 250 events,
-// and logging enabled.
-func CreateManager() (*LongpollManager, error) {
-	return StartLongpoll(Options{
-		LoggingEnabled:            true,
-		MaxLongpollTimeoutSeconds: 180,
-		MaxEventBufferSize:        250,
-		// Original behavior maintained, events are never deleted unless they're
-		// pushed out by max buffer size exceeded.
-		EventTimeToLiveSeconds:         FOREVER,
-		DeleteEventAfterFirstRetrieval: false,
-	})
-}
-
-/// DEPRECATED.  Use StartCustomLongpoll instead.
-// Creates a custom LongpollManager and pub-sub goroutine connected via channels
-// that are exposed via LongpollManager's Publish() function and
-// SubscriptionHandler field which can get used as an http handler function.
-//
-// The options are as follows.
-// maxTimeoutSeconds, the max number of seconds a longpoll web request can wait
-// before returning a timeout response in the event of no events on that
-// subscription category.
-//
-// eventBufferSize, the number of events that get buffered per subscription
-// category before we start throwing the oldest events out.  These buffers are
-// used to support longpolling for events in the past, and giving a better
-// guarantee that any events that occurred between client's longpoll requests
-// can still be seen by their next request.
-//
-// loggingEnabled, whether or not log statements are printed out.
-func CreateCustomManager(maxTimeoutSeconds, eventBufferSize int, loggingEnabled bool) (*LongpollManager, error) {
-	return StartLongpoll(Options{
-		LoggingEnabled:            loggingEnabled,
-		MaxLongpollTimeoutSeconds: maxTimeoutSeconds,
-		MaxEventBufferSize:        eventBufferSize,
-		// Original behavior maintained, events are never deleted unless they're
-		// pushed out by max buffer size exceeded.
-		EventTimeToLiveSeconds:         FOREVER,
-		DeleteEventAfterFirstRetrieval: false,
-	})
 }
 
 type clientSubscription struct {
@@ -384,7 +316,7 @@ type subscriptionManager struct {
 // This should be fired off in its own goroutine
 func (sm *subscriptionManager) run() error {
 	if sm.LoggingEnabled {
-		log.Printf("SubscriptionManager: Starting run.")
+		log.Println("SubscriptionManager: Starting run.")
 	}
 	for {
 		select {
@@ -396,7 +328,7 @@ func (sm *subscriptionManager) run() error {
 			sm.handleNewEvent(&event)
 		case _ = <-sm.Quit:
 			if sm.LoggingEnabled {
-				log.Printf("SubscriptionManager: received quit signal, stopping.")
+				log.Println("SubscriptionManager: received quit signal, stopping.")
 			}
 			// break out of our infinite loop/select
 			return nil
@@ -429,16 +361,16 @@ func (sm *subscriptionManager) handleNewClient(newClient *clientSubscription) er
 			sm.DeleteEventAfterFirstRetrieval); err == nil && len(events) > 0 {
 			doQueueRequest = false
 			if sm.LoggingEnabled {
-				log.Printf("SubscriptionManager: Skip adding client, sending %d events. (Category: %q Client: %s)",
+				log.Printf("SubscriptionManager: Skip adding client, sending %d events. (Category: %q Client: %s)\n",
 					len(events), newClient.SubscriptionCategory, newClient.ClientUUID.String())
 			}
 			// Send client buffered events.  Client will immediately consume
 			// and end long poll request, so no need to have manager store
 			newClient.Events <- events
 		} else if err != nil {
-			funcErr = fmt.Errorf("Error getting events from event buffer: %s.", err)
+			funcErr = fmt.Errorf("Error getting events from event buffer: %s.\n", err)
 			if sm.LoggingEnabled {
-				log.Printf("Error getting events from event buffer: %s.", err)
+				log.Printf("Error getting events from event buffer: %s.\n", err)
 			}
 		}
 		// Buffer Could have been emptied due to the  DeleteEventAfterFirstRetrieval
@@ -454,7 +386,7 @@ func (sm *subscriptionManager) handleNewClient(newClient *clientSubscription) er
 			sm.ClientSubChannels[newClient.SubscriptionCategory] = categoryClients
 		}
 		if sm.LoggingEnabled {
-			log.Printf("SubscriptionManager: Adding Client (Category: %q Client: %s)",
+			log.Printf("SubscriptionManager: Adding Client (Category: %q Client: %s)\n",
 				newClient.SubscriptionCategory, newClient.ClientUUID.String())
 		}
 		categoryClients[newClient.ClientUUID] = newClient.Events
@@ -469,7 +401,7 @@ func (sm *subscriptionManager) handleClientDisconnect(disconnected *clientCatego
 		// specified key doesn't exist.
 		delete(subCategoryClients, disconnected.ClientUUID)
 		if sm.LoggingEnabled {
-			log.Printf("SubscriptionManager: Removing Client (Category: %q Client: %s)",
+			log.Printf("SubscriptionManager: Removing Client (Category: %q Client: %s)\n",
 				disconnected.SubscriptionCategory, disconnected.ClientUUID.String())
 		}
 		// Remove the client sub map entry for this category if there are
@@ -482,10 +414,10 @@ func (sm *subscriptionManager) handleClientDisconnect(disconnected *clientCatego
 	} else {
 		// Sub category entry not found.  Weird.  Log this!
 		if sm.LoggingEnabled {
-			log.Printf("Warning: client disconnect for non-existing subscription category: %q",
+			log.Printf("Warning: client disconnect for non-existing subscription category: %q\n",
 				disconnected.SubscriptionCategory)
 		}
-		funcErr = fmt.Errorf("Client disconnect for non-existing subscription category: %q",
+		funcErr = fmt.Errorf("Client disconnect for non-existing subscription category: %q\n",
 			disconnected.SubscriptionCategory)
 	}
 	return funcErr
@@ -507,11 +439,11 @@ func (sm *subscriptionManager) handleNewEvent(newEvent *lpEvent) error {
 			doBufferEvents = false
 		}
 		if sm.LoggingEnabled {
-			log.Printf("SubscriptionManager: forwarding event to %d clients. (event: %v)", len(clients), newEvent)
+			log.Printf("SubscriptionManager: forwarding event to %d clients. (event: %v)\n", len(clients), newEvent)
 		}
 		for clientUUID, clientChan := range clients {
 			if sm.LoggingEnabled {
-				log.Printf("SubscriptionManager: sending event to client: %s", clientUUID.String())
+				log.Printf("SubscriptionManager: sending event to client: %s\n", clientUUID.String())
 			}
 			clientChan <- []lpEvent{*newEvent}
 		}
@@ -523,7 +455,7 @@ func (sm *subscriptionManager) handleNewEvent(newEvent *lpEvent) error {
 		// of many different subscription categories, we don't keep the
 		// trivial/empty map entries.
 		if sm.LoggingEnabled {
-			log.Printf("SubscriptionManager: Removing %d client subscriptions for: %s",
+			log.Printf("SubscriptionManager: Removing %d client subscriptions for: %s\n",
 				len(clients), newEvent.Category)
 		}
 		delete(sm.ClientSubChannels, newEvent.Category)
@@ -541,18 +473,18 @@ func (sm *subscriptionManager) handleNewEvent(newEvent *lpEvent) error {
 			sm.SubEventBuffer[newEvent.Category] = buf
 		}
 		if sm.LoggingEnabled {
-			log.Printf("SubscriptionManager: queue event: %v.", newEvent)
+			log.Printf("SubscriptionManager: queue event: %v.\n", newEvent)
 		}
 		// queue event in event buffer
 		if qErr := buf.QueueEvent(newEvent); qErr != nil {
 			if sm.LoggingEnabled {
-				log.Printf("Error: failed to queue event.  err: %s", qErr)
+				log.Printf("Error: failed to queue event.  err: %s\n", qErr)
 			}
-			funcErr = fmt.Errorf("Error: failed to queue event.  err: %s", qErr)
+			funcErr = fmt.Errorf("Error: failed to queue event.  err: %s\n", qErr)
 		}
 	} else {
 		if sm.LoggingEnabled {
-			log.Printf("SubscriptionManager: DeleteEventAfterFirstRetrieval: SKIP queue event: %v.", newEvent)
+			log.Printf("SubscriptionManager: DeleteEventAfterFirstRetrieval: SKIP queue event: %v.\n", newEvent)
 		}
 	}
 	// Perform Event TTL check and empty buffer cleanup:
@@ -567,7 +499,7 @@ func (sm *subscriptionManager) deleteBufferIfEmpty(buf *eventBuffer, category st
 	if buf.List.Len() == 0 {
 		delete(sm.SubEventBuffer, category)
 		if sm.LoggingEnabled {
-			log.Printf("Deleting empty eventBuffer for category: %s", category)
+			log.Printf("Deleting empty eventBuffer for category: %s\n", category)
 		}
 	}
 	return nil
