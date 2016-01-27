@@ -318,6 +318,14 @@ func (sm *subscriptionManager) run() error {
 	if sm.LoggingEnabled {
 		log.Println("SubscriptionManager: Starting run.")
 	}
+	// We remove events older than the configured Time To Live from their
+	// buffers whenever we queue a new event in said buffer and whenever
+	// a client requests events from the buffer.
+	// But if we have an 'inactive' category (each category has a buffer)
+	// where there are no new events and no new client requests, then we
+	// would never remove expired events.  So periodically check for
+	// expired events from any stale categories.
+	staleCategoryPurgePeriodSeconds := 60 * 3 // every 3 minutes
 	for {
 		select {
 		case newClient := <-sm.clientSubscriptions:
@@ -326,6 +334,15 @@ func (sm *subscriptionManager) run() error {
 			sm.handleClientDisconnect(&disconnected)
 		case event := <-sm.Events:
 			sm.handleNewEvent(&event)
+		case <-time.After(time.Duration(staleCategoryPurgePeriodSeconds) * time.Second):
+			if sm.EventTimeToLiveSeconds == FOREVER {
+				// Events never expire, don't bother checking here
+				break
+			}
+			if sm.LoggingEnabled {
+				log.Println("SubscriptionManager: performing stale category purge.")
+			}
+			sm.purgeStaleCategories()
 		case _ = <-sm.Quit:
 			if sm.LoggingEnabled {
 				log.Println("SubscriptionManager: received quit signal, stopping.")
@@ -333,17 +350,6 @@ func (sm *subscriptionManager) run() error {
 			// break out of our infinite loop/select
 			return nil
 		}
-		// TODO: add some time.After case where we purge events with old TTL
-		// by using a datastruct that maps event time to buffer.
-		// this could be oldest event time to buffer mapping structure
-		// where any event older than (now - TTL) gets removed and empty
-		// buffers deleted.  also data struct would need to update in place
-		// which if problematic, perhaps use most-recent time and just delete
-		// entry for empty buffers.  then rely on TTL cleanup when events
-		// are added/fetched.  Technically events can last longer than TTL
-		// by a little bit, but any time a new event or client request on
-		// that category occurs, the old events would first be removed.
-		// TODO: remove any empty buffers
 	}
 }
 
@@ -498,6 +504,7 @@ func (sm *subscriptionManager) handleNewEvent(newEvent *lpEvent) error {
 func (sm *subscriptionManager) deleteBufferIfEmpty(buf *eventBuffer, category string) error {
 	if buf.List.Len() == 0 {
 		delete(sm.SubEventBuffer, category)
+		// TODO: update heap entry if we're keeping track
 		if sm.LoggingEnabled {
 			log.Printf("Deleting empty eventBuffer for category: %s\n", category)
 		}
@@ -515,3 +522,11 @@ func (sm *subscriptionManager) checkExpiredEvents(buf *eventBuffer) error {
 	expiration_time := now_ms - int64(sm.EventTimeToLiveSeconds*1000)
 	return buf.DeleteEventsOlderThan(expiration_time)
 }
+
+func (sm *subscriptionManager) purgeStaleCategories() error {
+	// TODO: impl this
+	// TODO: make sure only incurring cost of keeping heap data struct if we have a TTL that != FOREVER
+	return nil
+}
+
+// TODO: wrapper funcs for updating queue that break early if trivial case we dont do TTL?
