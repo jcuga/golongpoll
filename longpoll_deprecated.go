@@ -60,7 +60,7 @@ func CreateManager() (*LongpollManager, error) {
 // loggingEnabled, whether or not log statements are printed out.
 func CreateCustomManager(maxTimeoutSeconds, eventBufferSize int,
 	loggingEnabled bool) (*LongpollManager, error) {
-	log.Printf("WARNING: the function golongpoll.CreateCustomManager is deprectated and should no longer be used..\n")
+	log.Printf("WARNING: the function golongpoll.CreateCustomManager is deprectated and should no longer be used.\n")
 	return StartLongpoll(Options{
 		LoggingEnabled:            loggingEnabled,
 		MaxLongpollTimeoutSeconds: maxTimeoutSeconds,

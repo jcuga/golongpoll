@@ -38,7 +38,12 @@ func main() {
 	// Using CreateCustomManager allows you to specify the max timeout window
 	// for longpoll requests (120 seconds), how many events to buffer per
 	// category (100), and whether or not to log (true)
-	manager, err := golongpoll.CreateCustomManager(120, 100, true)
+	manager, err := golongpoll.StartLongpoll(golongpoll.Options{
+		LoggingEnabled:            true,
+		MaxLongpollTimeoutSeconds: 120,
+		MaxEventBufferSize:        100,
+		EventTimeToLiveSeconds:    60 * 5, // 5 minutes
+	})
 	if err != nil {
 		log.Fatalf("Failed to create manager: %q", err)
 	}
