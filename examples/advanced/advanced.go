@@ -35,14 +35,11 @@ import (
 )
 
 func main() {
-	// Using CreateCustomManager allows you to specify the max timeout window
-	// for longpoll requests (120 seconds), how many events to buffer per
-	// category (100), and whether or not to log (true)
 	manager, err := golongpoll.StartLongpoll(golongpoll.Options{
 		LoggingEnabled:            true,
 		MaxLongpollTimeoutSeconds: 120,
 		MaxEventBufferSize:        100,
-		EventTimeToLiveSeconds:    60 * 5, // 5 minutes
+		EventTimeToLiveSeconds:    60 * 2, // Event's stick around for 2 minutes
 	})
 	if err != nil {
 		log.Fatalf("Failed to create manager: %q", err)
@@ -162,8 +159,8 @@ func getEventSubscriptionHandler(manager *golongpoll.LongpollManager) func(w htt
 }
 
 // Here we're providing a webpage that lets you pick a user, perform an action
-// and see the recent history of all your actions and any public action by
-// the other users.
+// and see the recent history (last 2 min) of all your actions and any public
+// action by the other users.
 //
 // In this code you'll see a sample of how to implement longpolling on the
 // client side in javascript.  I used jquery here.  There are TWO longpolls

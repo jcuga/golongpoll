@@ -21,6 +21,7 @@ const (
 	FOREVER = -1001
 )
 
+// TODO: revise comments here and everywhere
 // LongpollManager provides an interface to interact with the internal
 // longpolling pup-sub goroutine.
 //
@@ -111,19 +112,6 @@ type Options struct {
 }
 
 // TODO: function comments
-// TODO: or even allow a default?  make users provide explicit options?
-func StartDefaultLongpoll() (*LongpollManager, error) {
-	return StartLongpoll(Options{
-		LoggingEnabled:            true,
-		MaxLongpollTimeoutSeconds: 180,
-		MaxEventBufferSize:        250,
-		// TODO: appropriate default event TTL?
-		EventTimeToLiveSeconds:         60 * 60 * 24, // events retained for 24 hours
-		DeleteEventAfterFirstRetrieval: false,
-	})
-}
-
-// TODO: function comments
 func StartLongpoll(opts Options) (*LongpollManager, error) {
 	if opts.MaxEventBufferSize < 1 {
 		return nil, errors.New("Options.MaxEventBufferSize must be at least 1")
@@ -146,18 +134,26 @@ func StartLongpoll(opts Options) (*LongpollManager, error) {
 	// never has a send, only a close, so no larger capacity needed:
 	quit := make(chan bool, 1)
 	subManager := subscriptionManager{
-		clientSubscriptions:             clientRequestChan,
-		ClientTimeouts:                  clientTimeoutChan,
-		Events:                          events,
-		ClientSubChannels:               make(map[string]map[uuid.UUID]chan<- []lpEvent),
-		SubEventBuffer:                  make(map[string]*PQItem),
-		Quit:                            quit,
-		LoggingEnabled:                  opts.LoggingEnabled,
-		MaxEventBufferSize:              opts.MaxEventBufferSize,
-		EventTimeToLiveSeconds:          opts.EventTimeToLiveSeconds,
-		DeleteEventAfterFirstRetrieval:  opts.DeleteEventAfterFirstRetrieval,
-		staleCategoryPurgePeriodSeconds: 60 * 3, // 3 minutes
-		bufferPriorityQueue:             make(priorityQueue, 0),
+		clientSubscriptions:            clientRequestChan,
+		ClientTimeouts:                 clientTimeoutChan,
+		Events:                         events,
+		ClientSubChannels:              make(map[string]map[uuid.UUID]chan<- []lpEvent),
+		SubEventBuffer:                 make(map[string]*PQItem),
+		Quit:                           quit,
+		LoggingEnabled:                 opts.LoggingEnabled,
+		MaxEventBufferSize:             opts.MaxEventBufferSize,
+		EventTimeToLiveSeconds:         opts.EventTimeToLiveSeconds,
+		DeleteEventAfterFirstRetrieval: opts.DeleteEventAfterFirstRetrieval,
+		// check for stale categories every 3 minutes.
+		// remember we do expiration/cleanup on individual buffers whenever
+		// activity occurs on that buffer's category (client request, event published)
+		// so this periodic purge check is only needed to remove events on
+		// categories that have been inactive for a while.
+		staleCategoryPurgePeriodSeconds: 60 * 3,
+		// set last purge time to present so we wait a full period before puring
+		// if this defaulted to zero then we'd immediately do a purge which is unecessary
+		lastStaleCategoryPurgeTime: timeToEpochMilliseconds(time.Now()),
+		bufferPriorityQueue:        make(priorityQueue, 0),
 	}
 	heap.Init(&subManager.bufferPriorityQueue)
 	// Start subscription manager
@@ -321,6 +317,8 @@ type subscriptionManager struct {
 	DeleteEventAfterFirstRetrieval bool
 	// How often we check for stale event buffers and delete them
 	staleCategoryPurgePeriodSeconds int
+	// Last time in millisecondss since epoch that performed a stale category purge
+	lastStaleCategoryPurgeTime int64
 	// PriorityQueue/heap that keeps event buffers in oldest-first order
 	// so we can easily delete eventBuffer/categories that have expired data
 	bufferPriorityQueue priorityQueue
@@ -332,22 +330,24 @@ func (sm *subscriptionManager) run() error {
 		log.Println("SubscriptionManager: Starting run.")
 	}
 	for {
+		// NOTE: we check to see if its time to purge old buffers whenever
+		// something happens or a second of inactivity has occurred.
+		// An alternative would be to have another goroutine with a
+		// select case time.After() but then you'd have concurrency issues
+		// with access to the sm.SubEventBuffer and sm.bufferPriorityQueue objs
+		// So instead of introducing mutexes we have this uglier manual time check
 		select {
 		case newClient := <-sm.clientSubscriptions:
 			sm.handleNewClient(&newClient)
+			sm.seeIfTimeToPurgeStaleCategories()
 		case disconnected := <-sm.ClientTimeouts:
 			sm.handleClientDisconnect(&disconnected)
+			sm.seeIfTimeToPurgeStaleCategories()
 		case event := <-sm.Events:
 			sm.handleNewEvent(&event)
-		// We remove events older than the configured Time To Live from their
-		// buffers whenever we queue a new event in said buffer and whenever
-		// a client requests events from the buffer.
-		// But if we have an 'inactive' category (each category has a buffer)
-		// where there are no new events and no new client requests, then we
-		// would never remove expired events.  So periodically check for
-		// expired events from any stale categories.
-		case <-time.After(time.Duration(sm.staleCategoryPurgePeriodSeconds) * time.Second):
-			sm.purgeStaleCategories()
+			sm.seeIfTimeToPurgeStaleCategories()
+		case <-time.After(time.Duration(5) * time.Second):
+			sm.seeIfTimeToPurgeStaleCategories()
 		case _ = <-sm.Quit:
 			if sm.LoggingEnabled {
 				log.Println("SubscriptionManager: received quit signal, stopping.")
@@ -356,6 +356,15 @@ func (sm *subscriptionManager) run() error {
 			return nil
 		}
 	}
+}
+
+func (sm *subscriptionManager) seeIfTimeToPurgeStaleCategories() error {
+	now_ms := timeToEpochMilliseconds(time.Now())
+	if now_ms > (sm.lastStaleCategoryPurgeTime + int64(1000*sm.staleCategoryPurgePeriodSeconds)) {
+		sm.lastStaleCategoryPurgeTime = now_ms
+		return sm.purgeStaleCategories()
+	}
+	return nil
 }
 
 func (sm *subscriptionManager) handleNewClient(newClient *clientSubscription) error {
@@ -637,7 +646,3 @@ func (sm *subscriptionManager) priorityQueueUpdateDeletedBuffer(pqItem *PQItem) 
 	pqItem.eventBuffer_ptr = nil // remove reference to eventBuffer
 	return nil
 }
-
-// TODO: sanity check when heap is updated, that items are truly removd from both map and heap, etc
-
-// TODO: make sure eventBuffer_ptr is never used when nil
