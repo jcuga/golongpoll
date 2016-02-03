@@ -16,12 +16,14 @@ import (
 	"fmt"
 )
 
-// An Item is something we manage in a priority queue.
-type PQItem struct {
+// This priority queue manages eventBuffers that expire after a certain
+// period of inactivity (no new events).
+type expiringBuffer struct {
 	// references an eventBuffer
 	eventBuffer_ptr *eventBuffer
 	// The subscription category for the given event buffer
 	// This is needed so we can clean up our category-to-Item map
+	// by doing a simple key lookup and removing the eventBuffer ref
 	category string
 	// The priority of the item in the queue.
 	// For our purposes, this is milliseconds since epoch
@@ -32,7 +34,7 @@ type PQItem struct {
 }
 
 // A priorityQueue implements heap.Interface and holds Items.
-type priorityQueue []*PQItem
+type priorityQueue []*expiringBuffer
 
 func (pq priorityQueue) Len() int { return len(pq) }
 
@@ -49,7 +51,7 @@ func (pq priorityQueue) Swap(i, j int) {
 
 func (pq *priorityQueue) Push(x interface{}) {
 	n := len(*pq)
-	item := x.(*PQItem)
+	item := x.(*expiringBuffer)
 	item.index = n
 	*pq = append(*pq, item)
 }
@@ -64,7 +66,7 @@ func (pq *priorityQueue) Pop() interface{} {
 }
 
 // update modifies the priority of an item and updates the heap accordingly
-func (pq *priorityQueue) updatePriority(item *PQItem, priority int64) {
+func (pq *priorityQueue) updatePriority(item *expiringBuffer, priority int64) {
 	item.priority = priority
 	// NOTE: fix is a slightly more efficient version of calling Remove() and
 	// then Push()
