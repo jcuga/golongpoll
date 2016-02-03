@@ -164,15 +164,15 @@ func Test_LongpollManager_Publish(t *testing.T) {
 		t.Errorf("Failed to find event in sub manager's category-to-eventBuffer map")
 	}
 	// Double check that the expected max buffer size and capacity were set
-	if buf.MaxBufferSize != 250 {
-		t.Errorf("Expected max buffer size of %d, but got %d.", 250, buf.MaxBufferSize)
+	if buf.eventBuffer_ptr.MaxBufferSize != 250 {
+		t.Errorf("Expected max buffer size of %d, but got %d.", 250, buf.eventBuffer_ptr.MaxBufferSize)
 	}
-	if buf.List.Len() != 1 {
-		t.Errorf("Expected buffer to be 1 item. instead: %d", buf.List.Len())
+	if buf.eventBuffer_ptr.List.Len() != 1 {
+		t.Errorf("Expected buffer to be 1 item. instead: %d", buf.eventBuffer_ptr.List.Len())
 	}
-	if buf.Front().Value.(*lpEvent).Data != "apple" {
+	if buf.eventBuffer_ptr.Front().Value.(*lpEvent).Data != "apple" {
 		t.Errorf("Expected event data to be %q, but got %q", "apple",
-			buf.Front().Value.(*lpEvent).Data)
+			buf.eventBuffer_ptr.Front().Value.(*lpEvent).Data)
 	}
 
 	// Publish two more events
@@ -199,23 +199,23 @@ func Test_LongpollManager_Publish(t *testing.T) {
 	if !found {
 		t.Errorf("Failed to find event in sub manager's category-to-eventBuffer map")
 	}
-	if buf.List.Len() != 2 {
-		t.Errorf("Expected buffer to be 2 items. instead: %d", buf.List.Len())
+	if buf.eventBuffer_ptr.List.Len() != 2 {
+		t.Errorf("Expected buffer to be 2 items. instead: %d", buf.eventBuffer_ptr.List.Len())
 	}
-	if buf.Front().Value.(*lpEvent).Data != "orange" {
+	if buf.eventBuffer_ptr.Front().Value.(*lpEvent).Data != "orange" {
 		t.Errorf("Expected event data to be %q, but got %q", "orange",
-			buf.Front().Value.(*lpEvent).Data)
+			buf.eventBuffer_ptr.Front().Value.(*lpEvent).Data)
 	}
 	buf, found = manager.subManager.SubEventBuffer["veggies"]
 	if !found {
 		t.Errorf("Failed to find event in sub manager's category-to-eventBuffer map")
 	}
-	if buf.List.Len() != 1 {
-		t.Errorf("Expected buffer to be 1 item. instead: %d", buf.List.Len())
+	if buf.eventBuffer_ptr.List.Len() != 1 {
+		t.Errorf("Expected buffer to be 1 item. instead: %d", buf.eventBuffer_ptr.List.Len())
 	}
-	if buf.Front().Value.(*lpEvent).Data != "potato" {
+	if buf.eventBuffer_ptr.Front().Value.(*lpEvent).Data != "potato" {
 		t.Errorf("Expected event data to be %q, but got %q", "potato",
-			buf.Front().Value.(*lpEvent).Data)
+			buf.eventBuffer_ptr.Front().Value.(*lpEvent).Data)
 	}
 	// Don't forget to kill subscription manager's running goroutine
 	manager.Shutdown()
@@ -252,19 +252,19 @@ func Test_LongpollManager_Publish_MaxBufferSize(t *testing.T) {
 		t.Errorf("Failed to find event in sub manager's category-to-eventBuffer map")
 	}
 	// Double check that the expected max buffer size and capacity were set
-	if buf.MaxBufferSize != 2 {
-		t.Errorf("Expected max buffer size of %d, but got %d.", 2, buf.MaxBufferSize)
+	if buf.eventBuffer_ptr.MaxBufferSize != 2 {
+		t.Errorf("Expected max buffer size of %d, but got %d.", 2, buf.eventBuffer_ptr.MaxBufferSize)
 	}
-	if buf.List.Len() != 2 {
-		t.Errorf("Expected buffer to be 2 items. instead: %d", buf.List.Len())
+	if buf.eventBuffer_ptr.List.Len() != 2 {
+		t.Errorf("Expected buffer to be 2 items. instead: %d", buf.eventBuffer_ptr.List.Len())
 	}
-	if buf.Front().Value.(*lpEvent).Data != "banana" {
+	if buf.eventBuffer_ptr.Front().Value.(*lpEvent).Data != "banana" {
 		t.Errorf("Expected event data to be %q, but got %q", "banana",
-			buf.Front().Value.(*lpEvent).Data)
+			buf.eventBuffer_ptr.Front().Value.(*lpEvent).Data)
 	}
-	if buf.Back().Value.(*lpEvent).Data != "apple" {
+	if buf.eventBuffer_ptr.Back().Value.(*lpEvent).Data != "apple" {
 		t.Errorf("Expected event data to be %q, but got %q", "apple",
-			buf.Front().Value.(*lpEvent).Data)
+			buf.eventBuffer_ptr.Front().Value.(*lpEvent).Data)
 	}
 
 	// Now try and publish another event on the same fruit category,
@@ -280,19 +280,19 @@ func Test_LongpollManager_Publish_MaxBufferSize(t *testing.T) {
 		t.Errorf("Failed to find event in sub manager's category-to-eventBuffer map")
 	}
 	// Double check that the expected max buffer size and capacity were set
-	if buf.MaxBufferSize != 2 {
-		t.Errorf("Expected max buffer size of %d, but got %d.", 2, buf.MaxBufferSize)
+	if buf.eventBuffer_ptr.MaxBufferSize != 2 {
+		t.Errorf("Expected max buffer size of %d, but got %d.", 2, buf.eventBuffer_ptr.MaxBufferSize)
 	}
-	if buf.List.Len() != 2 {
-		t.Errorf("Expected buffer to be 2 items. instead: %d", buf.List.Len())
+	if buf.eventBuffer_ptr.List.Len() != 2 {
+		t.Errorf("Expected buffer to be 2 items. instead: %d", buf.eventBuffer_ptr.List.Len())
 	}
-	if buf.Front().Value.(*lpEvent).Data != "pear" {
+	if buf.eventBuffer_ptr.Front().Value.(*lpEvent).Data != "pear" {
 		t.Errorf("Expected event data to be %q, but got %q", "banana",
-			buf.Front().Value.(*lpEvent).Data)
+			buf.eventBuffer_ptr.Front().Value.(*lpEvent).Data)
 	}
-	if buf.Back().Value.(*lpEvent).Data != "banana" {
+	if buf.eventBuffer_ptr.Back().Value.(*lpEvent).Data != "banana" {
 		t.Errorf("Expected event data to be %q, but got %q", "apple",
-			buf.Front().Value.(*lpEvent).Data)
+			buf.eventBuffer_ptr.Front().Value.(*lpEvent).Data)
 	}
 
 	// Now confirm publishing on a different category still works
@@ -306,12 +306,12 @@ func Test_LongpollManager_Publish_MaxBufferSize(t *testing.T) {
 	if !found {
 		t.Errorf("Failed to find event in sub manager's category-to-eventBuffer map")
 	}
-	if buf.List.Len() != 1 {
-		t.Errorf("Expected buffer to be 1 item. instead: %d", buf.List.Len())
+	if buf.eventBuffer_ptr.List.Len() != 1 {
+		t.Errorf("Expected buffer to be 1 item. instead: %d", buf.eventBuffer_ptr.List.Len())
 	}
-	if buf.Front().Value.(*lpEvent).Data != "potato" {
+	if buf.eventBuffer_ptr.Front().Value.(*lpEvent).Data != "potato" {
 		t.Errorf("Expected event data to be %q, but got %q", "potato",
-			buf.Front().Value.(*lpEvent).Data)
+			buf.eventBuffer_ptr.Front().Value.(*lpEvent).Data)
 	}
 	// Don't forget to kill subscription manager's running goroutine
 	manager.Shutdown()
