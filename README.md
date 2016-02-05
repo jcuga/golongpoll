@@ -3,8 +3,10 @@ golang HTTP longpolling library, making web pub-sub easy!
 
 Table of contents
 =================
+  * [New in v1.1](#new-in-v11)
   * [Basic Usage](#basic-usage)
     * [HTTP Subscription Handler](#http-subscription-handler)
+    * [Options] (#options)
   * [What is longpolling?](#what-is-longpolling)
   * [Included examples](#included-examples)
     * [Basic](#basic)
@@ -13,6 +15,14 @@ Table of contents
     * [Events with JSON payloads](#events-with-json-payloads)
     * [Wrapping subscriptions](#wrapping-subscriptions)
     * [Publishing events via the web](#publishing-events-via-the-web)
+
+New in v1.1
+=================
+- Deprecated ```CreateManager``` and ```CreateCustomManager``` in favor of ```StartLongpoll```
+  -  The deprecated functions still work but they log warnings when called.
+  -  ```StartLongpoll``` takes an ```Options``` struct that allows you to configure more behavior.  See [Options] (#options)
+- Event expiration via the ```EventTimeToLiveSeconds``` option.  
+- Bug fixes for client disconnects
 
 Basic usage
 =================
@@ -32,13 +42,43 @@ manager.Publish("different-category", "More data")
 http.HandleFunc("/events", manager.SubscriptionHandler)
 http.ListenAndServe("127.0.0.1:8081", nil)
 ```
+For a working demo, see [basic.go](examples/basic/basic.go).
+
 Note that you can add extra access-control, validation, or other behavior on top of the manager's SubscriptionHandler.  See the [advanced example](#advanced).  This example also shows how to publish a more complicated payload JSON object.
 
 You can also configure the ```LongpollManager``` by defining values in the ```golongpoll.Options``` param passed to ```StartLongpoll(opts)```
 
 Options
 -----
-TODO
+The default options should work for most people's needs.  However, if you are worried about old events sitting around taking up space and want to fine tune how long events last inside the internal buffers you can roll up your sleeves and configure the ```LongpollManager```.  This applies most to programs that are going to deal with a 'large' number of events over a 'long' period of time. 
+
+The following options are now available.
+- ```LoggingEnabled bool```: Whether or not to output logs about events, subscriptions, and clients.  Defaults to false.
+- ```MaxLongpollTimeoutSeconds int```: Max amount of time clients are allowed to keep a longpoll connection.  This is used against the ```timeout```: Query param sent to the ```SubscriptionHandler```.  Defaults to 120.
+- ```MaxEventBufferSize int```: The max number of events kept in a given subscription category before the oldest events are discarded even if they're not expired yet.  Buffering is important if you want to let clients request events from the past, or if you have high-volume events that occur in spurts and you don't clients to miss anything.  Defaults to 250.
+- ```EventTimeToLiveSeconds int```: How long events can remain in the internal buffer before they're discarded for being too old.  This determines how long in the past clients can see events (they can provide a ```since_time``` query param to request old events).  Defaults to the constant ```golongpoll.FOREVER``` which means they never expire.  If you're concerned about old events sitting around in the internal buffers wasting space (especially if you're generating a large number of events and running the program for long periods of time), you can set a reasonable expiration and they automatically be removed once expired.
+- ```DeleteEventAfterFirstRetrieval bool```:  Whether or not an event is immediately deleted as soon as it is retrieved by a client (via the ```SubscriptionHandler```).  This is useful if you only have one client per subscription category and you only care to see event's once.  This may be useful for a notification type scenario where each client has a subscription category and you only see events once.  Alternatively, clients could just update their ```since_time``` param in their longpoll request to be that of the timestamp of their most recent notification, thus causing previously seen notifications to not be retrieved.  But there may be other scenarios where this option is more desirable since people have asked for this.  Defaults to false.
+
+These are set on the ```golongpoll.Options``` struct that gets passed to ```golongpoll.StartLongpoll```.  For example:
+```go
+	manager, err := golongpoll.StartLongpoll(golongpoll.Options{
+		LoggingEnabled:                 true,
+		MaxLongpollTimeoutSeconds:      60,
+		MaxEventBufferSize:             100,
+		EventTimeToLiveSeconds:         60 * 2, // Event's stick around for 2 minutes
+		DeleteEventAfterFirstRetrieval: false,
+	})
+```
+Or if you want the defauls, just provide an empty struct, or a struct that only defines the options you want to override.
+```go
+// all default options:
+manager, err := golongpoll.StartLongpoll(golongpoll.Options{})
+
+// Default options with EventTimeToLiveSeconds override:
+manager, err := golongpoll.StartLongpoll(golongpoll.Options{
+			EventTimeToLiveSeconds:         60 * 2,
+	})
+```
 
 HTTP Subscription Handler
 -----
@@ -136,7 +176,7 @@ More advanced use
 All of the below topics are demonstrated in the advanced example:
 Events with JSON payloads
 -----
-Try passing any type that is convertable to JSON to ```Publish()```. If the type can be passed to encoding/json.Marshal(), it will work.
+Try passing any type that is convertible to JSON to ```Publish()```. If the type can be passed to encoding/json.Marshal(), it will work.
 
 Wrapping subscriptions
 -----
