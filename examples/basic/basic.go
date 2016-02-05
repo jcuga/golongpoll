@@ -37,10 +37,9 @@ import (
 
 func main() {
 	manager, err := golongpoll.StartLongpoll(golongpoll.Options{
-		LoggingEnabled:            true,
-		MaxLongpollTimeoutSeconds: 120,
-		MaxEventBufferSize:        100,
-		EventTimeToLiveSeconds:    60 * 5, // Event's stick around for 5 minutes
+		LoggingEnabled: true,
+		// NOTE: if not defined here, other options have reasonable defaults,
+		// so no need specifying options you don't care about
 	})
 	if err != nil {
 		log.Fatalf("Failed to create manager: %q", err)

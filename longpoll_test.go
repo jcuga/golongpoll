@@ -90,24 +90,9 @@ func Test_LongpollManager_CreateCustomManager(t *testing.T) {
 }
 
 func Test_LongpollManager_CreateCustomManager_InvalidArgs(t *testing.T) {
-	manager, err := CreateCustomManager(360, 0, false) // buffer size == 0
-	// Confirm create call failed
+	manager, err := CreateCustomManager(360, -1, false) // buffer size == -1
 	if err == nil {
 		t.Errorf("Expected error when creating custom manager with invalid event buffer size ")
-	}
-	if manager != nil {
-		t.Errorf("Expected nil response for manager when create call returned error.")
-	}
-	manager, err = CreateCustomManager(360, -1, false) // buffer size == -1
-	if err == nil {
-		t.Errorf("Expected error when creating custom manager with invalid event buffer size ")
-	}
-	if manager != nil {
-		t.Errorf("Expected nil response for manager when create call returned error.")
-	}
-	manager, err = CreateCustomManager(0, 200, false) // timeout == 0
-	if err == nil {
-		t.Errorf("Expected error when creating custom manager with invalid timeout ")
 	}
 	if manager != nil {
 		t.Errorf("Expected nil response for manager when create call returned error.")
@@ -816,18 +801,18 @@ func Test_LongpollManager_StartLongpoll_Options(t *testing.T) {
 	if _, err := StartLongpoll(Options{
 		LoggingEnabled:            true,
 		MaxLongpollTimeoutSeconds: 120,
-		MaxEventBufferSize:        0,
+		MaxEventBufferSize:        -1,
 		EventTimeToLiveSeconds:    1,
 	}); err == nil {
-		t.Errorf("Expected error when passing MaxEventBufferSize that was < 1")
+		t.Errorf("Expected error when passing MaxEventBufferSize that was < 0")
 	}
 	if _, err := StartLongpoll(Options{
 		LoggingEnabled:            true,
-		MaxLongpollTimeoutSeconds: 0,
+		MaxLongpollTimeoutSeconds: -1,
 		MaxEventBufferSize:        100,
 		EventTimeToLiveSeconds:    1,
 	}); err == nil {
-		t.Errorf("Expected error when passing MaxLongpollTimeoutSeconds that was < 1")
+		t.Errorf("Expected error when passing MaxLongpollTimeoutSeconds that was < 0")
 	}
 	if _, err := StartLongpoll(Options{
 		LoggingEnabled:            true,
@@ -876,6 +861,67 @@ func Test_LongpollManager_StartLongpoll_Options(t *testing.T) {
 		}
 		manager.Shutdown()
 	}
+	// Confirm defaults for options set to zero value
+	// either explicitly like so:
+	if manager, err := StartLongpoll(Options{
+		LoggingEnabled:                 false,
+		MaxLongpollTimeoutSeconds:      0,
+		MaxEventBufferSize:             0,
+		EventTimeToLiveSeconds:         0,
+		DeleteEventAfterFirstRetrieval: false,
+	}); err != nil {
+		t.Errorf("Unxpected error when calling StartLongpoll with valid options")
+	} else {
+		if manager.subManager.EventTimeToLiveSeconds != FOREVER {
+			t.Errorf("Expected default of FOREVER when EventTimeToLiveSeconds is 0.  instead: %d",
+				manager.subManager.EventTimeToLiveSeconds)
+		}
+		if manager.subManager.MaxLongpollTimeoutSeconds != 120 {
+			t.Errorf("Expected default of 120 when MaxLongpollTimeoutSeconds is 0.  instead: %d",
+				manager.subManager.MaxLongpollTimeoutSeconds)
+		}
+		if manager.subManager.MaxEventBufferSize != 250 {
+			t.Errorf("Expected default of 250 when MaxEventBufferSize is 0.  instead: %d",
+				manager.subManager.MaxEventBufferSize)
+		}
+		if manager.subManager.LoggingEnabled != false {
+			t.Errorf("Expected default of false when LoggingEnabled is left out.  instead: %t",
+				manager.subManager.LoggingEnabled)
+		}
+		if manager.subManager.DeleteEventAfterFirstRetrieval != false {
+			t.Errorf("Expected default of false when DeleteEventAfterFirstRetrieval is left out.  instead: %t",
+				manager.subManager.DeleteEventAfterFirstRetrieval)
+		}
+		manager.Shutdown()
+	}
+
+	// or implicitly by never defining them:
+	if manager, err := StartLongpoll(Options{}); err != nil {
+		t.Errorf("Unxpected error when calling StartLongpoll with valid options")
+	} else {
+		if manager.subManager.EventTimeToLiveSeconds != FOREVER {
+			t.Errorf("Expected default of FOREVER when EventTimeToLiveSeconds is 0.  instead: %d",
+				manager.subManager.EventTimeToLiveSeconds)
+		}
+		if manager.subManager.MaxLongpollTimeoutSeconds != 120 {
+			t.Errorf("Expected default of 120 when MaxLongpollTimeoutSeconds is 0.  instead: %d",
+				manager.subManager.MaxLongpollTimeoutSeconds)
+		}
+		if manager.subManager.MaxEventBufferSize != 250 {
+			t.Errorf("Expected default of 250 when MaxEventBufferSize is 0.  instead: %d",
+				manager.subManager.MaxEventBufferSize)
+		}
+		if manager.subManager.LoggingEnabled != false {
+			t.Errorf("Expected default of false when LoggingEnabled is left out.  instead: %t",
+				manager.subManager.LoggingEnabled)
+		}
+		if manager.subManager.DeleteEventAfterFirstRetrieval != false {
+			t.Errorf("Expected default of false when DeleteEventAfterFirstRetrieval is left out.  instead: %t",
+				manager.subManager.DeleteEventAfterFirstRetrieval)
+		}
+		manager.Shutdown()
+	}
+
 }
 
 func Test_LongpollManager_EventExpiration(t *testing.T) {

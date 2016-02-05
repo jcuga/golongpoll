@@ -83,13 +83,13 @@ type Options struct {
 	LoggingEnabled bool
 
 	// Max client timeout seconds  to be accepted by the SubscriptionHandler
-	// (The 'timeout' HTTP query param)
+	// (The 'timeout' HTTP query param).  Defaults to 120.
 	MaxLongpollTimeoutSeconds int
 
 	// How many events to buffer per subscriptoin category before discarding
 	// oldest events due to buffer being exhausted.  Larger buffer sizes are
 	// useful for high volumes of events in the same categories.  But for
-	// low-volumes, smaller buffer sizes are more efficient.
+	// low-volumes, smaller buffer sizes are more efficient.  Defaults to 250.
 	MaxEventBufferSize int
 
 	// How long (seconds) events remain in their respective category's
@@ -100,6 +100,7 @@ type Options struct {
 	// value to save space in the more common low-volume case.
 	// If you want events to remain in the buffer as long as there is room per
 	// MaxEventBufferSize, then use the magic value longpoll.FOREVER here.
+	// Defaults to FOREVER.
 	EventTimeToLiveSeconds int
 
 	// Whether or not to delete an event as soon as it is retrieved via an
@@ -120,15 +121,23 @@ type Options struct {
 // takes an Options struct that configures the longpoll behavior.
 // If Options.EventTimeToLiveSeconds is omitted, the default is forever.
 func StartLongpoll(opts Options) (*LongpollManager, error) {
+	// default if not specified (likely struct skipped defining this field)
+	if opts.MaxLongpollTimeoutSeconds == 0 {
+		opts.MaxLongpollTimeoutSeconds = 120
+	}
+	// default if not specified (likely struct skipped defining this field)
+	if opts.MaxEventBufferSize == 0 {
+		opts.MaxEventBufferSize = 250
+	}
+	// If TTL is zero, default to FOREVER
+	if opts.EventTimeToLiveSeconds == 0 {
+		opts.EventTimeToLiveSeconds = FOREVER
+	}
 	if opts.MaxEventBufferSize < 1 {
 		return nil, errors.New("Options.MaxEventBufferSize must be at least 1")
 	}
 	if opts.MaxLongpollTimeoutSeconds < 1 {
 		return nil, errors.New("Options.MaxLongpollTimeoutSeconds must be at least 1")
-	}
-	// If TTL is zero, default to FOREVER
-	if opts.EventTimeToLiveSeconds == 0 {
-		opts.EventTimeToLiveSeconds = FOREVER
 	}
 	// TTL must be positive, non-zero, or the magic FOREVER value (a negative const)
 	if opts.EventTimeToLiveSeconds < 1 && opts.EventTimeToLiveSeconds != FOREVER {
@@ -148,6 +157,7 @@ func StartLongpoll(opts Options) (*LongpollManager, error) {
 		SubEventBuffer:                 make(map[string]*expiringBuffer),
 		Quit:                           quit,
 		LoggingEnabled:                 opts.LoggingEnabled,
+		MaxLongpollTimeoutSeconds:      opts.MaxLongpollTimeoutSeconds,
 		MaxEventBufferSize:             opts.MaxEventBufferSize,
 		EventTimeToLiveSeconds:         opts.EventTimeToLiveSeconds,
 		DeleteEventAfterFirstRetrieval: opts.DeleteEventAfterFirstRetrieval,
@@ -317,6 +327,9 @@ type subscriptionManager struct {
 	// channel to inform manager to stop running
 	Quit           <-chan bool
 	LoggingEnabled bool
+	// Max allowed timeout seconds when clients requesting a longpoll
+	// This is to validate the 'timeout' query param
+	MaxLongpollTimeoutSeconds int
 	// How big the buffers are (1-n) before events are discareded FIFO
 	MaxEventBufferSize int
 	// How long events can stay in their eventBuffer
