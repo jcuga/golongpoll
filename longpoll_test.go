@@ -616,8 +616,8 @@ func Test_LongpollManager_WebClient_HasEvents(t *testing.T) {
 	subscriptionHandler := ajaxHandler(manager.SubscriptionHandler)
 
 	// Valid request, but we don't have any events published,
-	// so this will wait 2 seconds (because timeout param = 2)
-	// and then come back wtih a timeout response
+	// so this will wait for a publish or timeout (in this case we'll get
+	// something)
 	req, _ := http.NewRequest("GET", "?timeout=30&category=veggies", nil)
 	w := NewCloseNotifierRecorder()
 	// Publish two events, only the second is for our subscription category
@@ -811,23 +811,689 @@ func Test_LongpollManager_makeTimeoutResponse(t *testing.T) {
 	}
 }
 
-// TODO: test cleanup of SubscriptionManager.ClientSubChannels when
-// there are no more clients after a disconnect
+func Test_LongpollManager_StartLongpoll_Options(t *testing.T) {
+	// Error cases due to invalid options:
+	if _, err := StartLongpoll(Options{
+		LoggingEnabled:            true,
+		MaxLongpollTimeoutSeconds: 120,
+		MaxEventBufferSize:        0,
+		EventTimeToLiveSeconds:    1,
+	}); err == nil {
+		t.Errorf("Expected error when passing MaxEventBufferSize that was < 1")
+	}
+	if _, err := StartLongpoll(Options{
+		LoggingEnabled:            true,
+		MaxLongpollTimeoutSeconds: 0,
+		MaxEventBufferSize:        100,
+		EventTimeToLiveSeconds:    1,
+	}); err == nil {
+		t.Errorf("Expected error when passing MaxLongpollTimeoutSeconds that was < 1")
+	}
+	if _, err := StartLongpoll(Options{
+		LoggingEnabled:            true,
+		MaxLongpollTimeoutSeconds: 120,
+		MaxEventBufferSize:        100,
+		EventTimeToLiveSeconds:    -1,
+	}); err == nil {
+		t.Errorf("Expected error when passing EventTimeToLiveSeconds that was < 0")
+	}
+	// Confirm valid options work
+	// actual TTL
+	if manager, err := StartLongpoll(Options{
+		LoggingEnabled:            true,
+		MaxLongpollTimeoutSeconds: 120,
+		MaxEventBufferSize:        100,
+		EventTimeToLiveSeconds:    30,
+	}); err != nil {
+		t.Errorf("Unxpected error when calling StartLongpoll with valid options")
+	} else {
+		manager.Shutdown()
+	}
 
-// TODO: test cleanup of SubscriptionManager.ClientSubChannels when
-// an event is sent to all clients and they are thus removed leaving zero in
-// mapped value (which is itself [an empty] map)
+	// Forever
+	if manager, err := StartLongpoll(Options{
+		LoggingEnabled:            true,
+		MaxLongpollTimeoutSeconds: 120,
+		MaxEventBufferSize:        100,
+		EventTimeToLiveSeconds:    FOREVER,
+	}); err != nil {
+		t.Errorf("Unxpected error when calling StartLongpoll with valid options")
+	} else {
+		manager.Shutdown()
+	}
+	// Confirm zero TTL converts to forever
+	if manager, err := StartLongpoll(Options{
+		LoggingEnabled:            true,
+		MaxLongpollTimeoutSeconds: 120,
+		MaxEventBufferSize:        100,
+		EventTimeToLiveSeconds:    0,
+	}); err != nil {
+		t.Errorf("Unxpected error when calling StartLongpoll with valid options")
+	} else {
+		if manager.subManager.EventTimeToLiveSeconds != FOREVER {
+			t.Errorf("Expected default of FOREVER when EventTimeToLiveSeconds is 0.  instead: %d",
+				manager.subManager.EventTimeToLiveSeconds)
+		}
+		manager.Shutdown()
+	}
+}
 
-// TODO: test the delete event on first fetch behavior
+func Test_LongpollManager_EventExpiration(t *testing.T) {
+	manager, _ := StartLongpoll(Options{
+		LoggingEnabled:            true,
+		MaxLongpollTimeoutSeconds: 120,
+		MaxEventBufferSize:        100,
+		EventTimeToLiveSeconds:    1,
+	})
+	sm := manager.subManager
+	if len(sm.SubEventBuffer) != 0 {
+		t.Errorf("Unexpected category-to-buffer map size.  was: %d, expected %d",
+			len(sm.SubEventBuffer), 0)
+	}
+	if sm.bufferPriorityQueue.Len() != 0 {
+		t.Errorf("Unexpected heap size.  was: %d, expected: %d", sm.bufferPriorityQueue.Len(), 0)
+	}
+	manager.Publish("fruit", "apple")
+	time.Sleep(10 * time.Millisecond)
+	manager.Publish("veggie", "corn")
+	time.Sleep(750 * time.Millisecond)
+	manager.Publish("fruit", "orange")
+	// Allow sub manager's goroutine time to pull from channel.
+	// This sleep should cause us to yield and let the other goroutine run
+	time.Sleep(50 * time.Millisecond)
+	// Only ~800ms has went by, nothing should be expired out yet, so confirm
+	// all data is there
+	if len(sm.SubEventBuffer) != 2 {
+		t.Errorf("Unexpected category-to-buffer map size.  was: %d, expected %d",
+			len(sm.SubEventBuffer), 2)
+	}
+	fruit_buffer, fruit_found := sm.SubEventBuffer["fruit"]
+	veggie_buffer, veggies_found := sm.SubEventBuffer["veggie"]
+	if !fruit_found || !veggies_found {
+		t.Errorf("failed to find fruit and veggie category event buffers")
+	}
+	if fruit_buffer.eventBuffer_ptr.List.Len() != 2 {
+		t.Errorf("Unexpected number of fruit events.  was: %d, expected %d",
+			fruit_buffer.eventBuffer_ptr.List.Len(), 2)
+	}
+	if veggie_buffer.eventBuffer_ptr.List.Len() != 1 {
+		t.Errorf("Unexpected number of veggie events.  was: %d, expected %d",
+			veggie_buffer.eventBuffer_ptr.List.Len(), 1)
+	}
+	if sm.bufferPriorityQueue.Len() != 2 {
+		t.Errorf("Unexpected heap size.  was: %d, expected: %d", sm.bufferPriorityQueue.Len(), 2)
+	}
+	// Confirm top of heap is the veggie category since veggie is the category
+	// with the oldest last-event (even tho fruit was started first, it has a
+	// more recent event published on it--the heap sorts categories by how old
+	// each categories most recent event is)
+	if priority, peakErr := sm.bufferPriorityQueue.peakTopPriority(); peakErr != nil {
+		t.Errorf("Unexpected error checking top priority: %v", peakErr)
+	} else {
+		if priority != veggie_buffer.eventBuffer_ptr.List.Front().Value.(*lpEvent).Timestamp {
+			t.Errorf("Expected priority to be: %d, was: %d", priority,
+				veggie_buffer.eventBuffer_ptr.List.Front().Value.(*lpEvent).Timestamp)
+		}
+	}
+	// Now wait long enough for the first two published events to expire
+	time.Sleep(220 * time.Millisecond)
+	// NOTE how nothing was removed yet, because we do lazy-eval and only remove
+	// expired stuff when activity occurs (but we do do a periodic check in
+	// addition, but thats every 3 min by default.)
+	if len(sm.SubEventBuffer) != 2 {
+		t.Errorf("Unexpected category-to-buffer map size.  was: %d, expected %d",
+			len(sm.SubEventBuffer), 2)
+	}
+	fruit_buffer, fruit_found = sm.SubEventBuffer["fruit"]
+	veggie_buffer, veggies_found = sm.SubEventBuffer["veggie"]
+	if !fruit_found || !veggies_found {
+		t.Errorf("failed to find fruit and veggie category event buffers")
+	}
+	if fruit_buffer.eventBuffer_ptr.List.Len() != 2 {
+		t.Errorf("Unexpected number of fruit events.  was: %d, expected %d",
+			fruit_buffer.eventBuffer_ptr.List.Len(), 2)
+	}
+	if veggie_buffer.eventBuffer_ptr.List.Len() != 1 {
+		t.Errorf("Unexpected number of veggie events.  was: %d, expected %d",
+			veggie_buffer.eventBuffer_ptr.List.Len(), 1)
+	}
+	if sm.bufferPriorityQueue.Len() != 2 {
+		t.Errorf("Unexpected heap size.  was: %d, expected: %d", sm.bufferPriorityQueue.Len(), 2)
+	}
+	if priority, peakErr := sm.bufferPriorityQueue.peakTopPriority(); peakErr != nil {
+		t.Errorf("Unexpected error checking top priority: %v", peakErr)
+	} else {
+		if priority != veggie_buffer.eventBuffer_ptr.List.Front().Value.(*lpEvent).Timestamp {
+			t.Errorf("Expected priority to be: %d, was: %d", priority,
+				veggie_buffer.eventBuffer_ptr.List.Front().Value.(*lpEvent).Timestamp)
+		}
+	}
+	// Force the fruit event to be expired out by introducing activity on the
+	// fruit category.  (In this case, a new event)
+	manager.Publish("fruit", "pear")
+	// Allow sub manager's goroutine time to pull from channel.
+	// This sleep should cause us to yield and let the other goroutine run
+	time.Sleep(50 * time.Millisecond)
+	if len(sm.SubEventBuffer) != 2 {
+		t.Errorf("Unexpected category-to-buffer map size.  was: %d, expected %d",
+			len(sm.SubEventBuffer), 2)
+	}
+	fruit_buffer, fruit_found = sm.SubEventBuffer["fruit"]
+	veggie_buffer, veggies_found = sm.SubEventBuffer["veggie"]
+	if !fruit_found || !veggies_found {
+		t.Errorf("failed to find fruit and veggie category event buffers")
+	}
+	// NOTE: fruit buffer has still only 2 events, not 3, because the one was
+	// expired out
+	if fruit_buffer.eventBuffer_ptr.List.Len() != 2 {
+		t.Errorf("Unexpected number of fruit events.  was: %d, expected %d",
+			fruit_buffer.eventBuffer_ptr.List.Len(), 2)
+	}
+	if veggie_buffer.eventBuffer_ptr.List.Len() != 1 {
+		t.Errorf("Unexpected number of veggie events.  was: %d, expected %d",
+			veggie_buffer.eventBuffer_ptr.List.Len(), 1)
+	}
+	if sm.bufferPriorityQueue.Len() != 2 {
+		t.Errorf("Unexpected heap size.  was: %d, expected: %d", sm.bufferPriorityQueue.Len(), 2)
+	}
+	// veggie buffer is still the oldest-newest-event category
+	if priority, peakErr := sm.bufferPriorityQueue.peakTopPriority(); peakErr != nil {
+		t.Errorf("Unexpected error checking top priority: %v", peakErr)
+	} else {
+		if priority != veggie_buffer.eventBuffer_ptr.List.Front().Value.(*lpEvent).Timestamp {
+			t.Errorf("Expected priority to be: %d, was: %d", priority,
+				veggie_buffer.eventBuffer_ptr.List.Front().Value.(*lpEvent).Timestamp)
+		}
+	}
+	// Force the veggie event to be expired out by introducing activity on the
+	// veggie category.  (In this case, a client requests a longpoll)
+	// also confirm longpoll doesn't return the now-expired events, even if
+	// client using a really old since param
+	subscriptionHandler := ajaxHandler(manager.SubscriptionHandler)
+	req, _ := http.NewRequest("GET", "?timeout=2&category=veggie", nil)
+	w := NewCloseNotifierRecorder()
+	subscriptionHandler.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("SubscriptionHandler didn't return %v", http.StatusOK)
+	}
+	approxTimeoutTime := timeToEpochMilliseconds(time.Now())
+	var timeoutResp timeoutResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &timeoutResp); err != nil {
+		t.Errorf("Failed to decode json: %q", err)
+	}
+	if timeoutResp.TimeoutMessage != "no events before timeout" {
+		t.Errorf("Unexpected timeout message: %q", timeoutResp.TimeoutMessage)
+	}
+	if timeoutResp.Timestamp < (approxTimeoutTime-100) ||
+		timeoutResp.Timestamp > approxTimeoutTime {
+		t.Errorf("Unexpected timeout timestamp.  Expected: %q, got: %q",
+			approxTimeoutTime, timeoutResp.Timestamp)
+	}
+	// Now confirm veggie category removed--only one category: fruit
+	// and in that category, only 2 events left
+	if len(sm.SubEventBuffer) != 1 {
+		t.Errorf("Unexpected category-to-buffer map size.  was: %d, expected %d",
+			len(sm.SubEventBuffer), 1)
+	}
+	fruit_buffer, fruit_found = sm.SubEventBuffer["fruit"]
+	veggie_buffer, veggies_found = sm.SubEventBuffer["veggie"]
 
-// TODO: test the empty buffer cleanup in all scenarios
+	if !fruit_found || veggies_found {
+		t.Errorf("Fruit should be found, veggies should not.")
+	}
+	// NOTE: fruit buffer has still has last two published fruit events.
+	if fruit_buffer.eventBuffer_ptr.List.Len() != 2 {
+		t.Errorf("Unexpected number of fruit events.  was: %d, expected %d",
+			fruit_buffer.eventBuffer_ptr.List.Len(), 2)
+	}
+	if sm.bufferPriorityQueue.Len() != 1 {
+		t.Errorf("Unexpected heap size.  was: %d, expected: %d", sm.bufferPriorityQueue.Len(), 1)
+	}
+	// fruit buffer is now the oldest most-recent-event-time buffer (and the only one)
+	if priority, peakErr := sm.bufferPriorityQueue.peakTopPriority(); peakErr != nil {
+		t.Errorf("Unexpected error checking top priority: %v", peakErr)
+	} else {
+		if priority != fruit_buffer.eventBuffer_ptr.List.Front().Value.(*lpEvent).Timestamp {
+			t.Errorf("Expected priority to be: %d, was: %d", priority,
+				fruit_buffer.eventBuffer_ptr.List.Front().Value.(*lpEvent).Timestamp)
+		}
+	}
+	// Now force the expire check on the last two fruit events.
+	// Enough time has elapsed that everything should be gone by now.
+	req, _ = http.NewRequest("GET", "?timeout=1&category=fruit", nil)
+	w = NewCloseNotifierRecorder()
+	subscriptionHandler.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("SubscriptionHandler didn't return %v", http.StatusOK)
+	}
+	approxTimeoutTime = timeToEpochMilliseconds(time.Now())
+	if err := json.Unmarshal(w.Body.Bytes(), &timeoutResp); err != nil {
+		t.Errorf("Failed to decode json: %q", err)
+	}
+	if timeoutResp.TimeoutMessage != "no events before timeout" {
+		t.Errorf("Unexpected timeout message: %q", timeoutResp.TimeoutMessage)
+	}
+	if timeoutResp.Timestamp < (approxTimeoutTime-100) ||
+		timeoutResp.Timestamp > approxTimeoutTime {
+		t.Errorf("Unexpected timeout timestamp.  Expected: %q, got: %q",
+			approxTimeoutTime, timeoutResp.Timestamp)
+	}
+	// Now confirm veggie category removed--only one category: fruit
+	// and in that category, only 2 events left
+	if len(sm.SubEventBuffer) != 0 {
+		t.Errorf("Unexpected category-to-buffer map size.  was: %d, expected %d",
+			len(sm.SubEventBuffer), 0)
+	}
+	_, fruit_found = sm.SubEventBuffer["fruit"]
+	_, veggies_found = sm.SubEventBuffer["veggie"]
 
-// TODO: test the Event TTL cleanup after a subscription queue
+	if fruit_found || veggies_found {
+		t.Errorf("Both fruit and veggie buffers should no longer exist in map.")
+	}
+	if sm.bufferPriorityQueue.Len() != 0 {
+		t.Errorf("Unexpected heap size.  was: %d, expected: %d", sm.bufferPriorityQueue.Len(), 0)
+	}
+	// fruit buffer is now the oldest most-recent-event-time buffer (and the only one)
+	if priority, peakErr := sm.bufferPriorityQueue.peakTopPriority(); peakErr == nil {
+		t.Errorf("Expected error when peaking at top of empty queue.")
+	} else {
+		if priority != -1 {
+			t.Errorf("Expected priority to be the -1 error value, instead it was: %d", priority)
+		}
+	}
+	manager.Shutdown()
+}
 
-// TODO: test the Event TTL cleanup after a event queue
+// Shared by multiple tests with manager configured different ways:
+func deleteOnFetchTest(manager *LongpollManager, t *testing.T) {
+	sm := manager.subManager
+	if len(sm.SubEventBuffer) != 0 {
+		t.Errorf("Unexpected category-to-buffer map size.  was: %d, expected %d",
+			len(sm.SubEventBuffer), 0)
+	}
+	if sm.EventTimeToLiveSeconds != FOREVER && sm.bufferPriorityQueue.Len() != 0 {
+		t.Errorf("Unexpected heap size.  was: %d, expected: %d", sm.bufferPriorityQueue.Len(), 0)
+	}
+	manager.Publish("fruit", "apple")
+	time.Sleep(10 * time.Millisecond)
+	manager.Publish("veggie", "corn")
+	time.Sleep(1150 * time.Millisecond)
+	manager.Publish("fruit", "orange")
+	time.Sleep(10 * time.Millisecond)
+	manager.Publish("veggie", "carrot")
+	// small wait so yield occurs and other goroutine gets a chance
+	time.Sleep(50 * time.Millisecond)
+	// Confirm expected state:
+	if len(sm.SubEventBuffer) != 2 {
+		t.Errorf("Unexpected category-to-buffer map size.  was: %d, expected %d",
+			len(sm.SubEventBuffer), 2)
+	}
+	fruit_buffer, fruit_found := sm.SubEventBuffer["fruit"]
+	veggie_buffer, veggies_found := sm.SubEventBuffer["veggie"]
+	if !fruit_found || !veggies_found {
+		t.Errorf("failed to find fruit and veggie category event buffers")
+	}
+	if fruit_buffer.eventBuffer_ptr.List.Len() != 2 {
+		t.Errorf("Unexpected number of fruit events.  was: %d, expected %d",
+			fruit_buffer.eventBuffer_ptr.List.Len(), 2)
+	}
+	if veggie_buffer.eventBuffer_ptr.List.Len() != 2 {
+		t.Errorf("Unexpected number of veggie events.  was: %d, expected %d",
+			veggie_buffer.eventBuffer_ptr.List.Len(), 2)
+	}
+	if sm.EventTimeToLiveSeconds != FOREVER && sm.bufferPriorityQueue.Len() != 2 {
+		t.Errorf("Unexpected heap size.  was: %d, expected: %d", sm.bufferPriorityQueue.Len(), 2)
+	}
+	// Confirm top of heap is the fruit category since fruit is the category
+	// with the oldest last-event
+	var priority_before_removal int64
+	// Only check heap if we're using it.  When no TTL, heap is not used.
+	if sm.EventTimeToLiveSeconds != FOREVER {
+		if priority, peakErr := sm.bufferPriorityQueue.peakTopPriority(); peakErr != nil {
+			t.Errorf("Unexpected error checking top priority: %v", peakErr)
+		} else {
+			if priority != fruit_buffer.eventBuffer_ptr.List.Front().Value.(*lpEvent).Timestamp {
+				t.Errorf("Expected priority to be: %d, was: %d", priority,
+					fruit_buffer.eventBuffer_ptr.List.Front().Value.(*lpEvent).Timestamp)
+			}
+			priority_before_removal = priority
+		}
+	}
 
-// TODO: test the Event TTL cleanup after skipped event queueing due to delete on first opt
+	// Now let's do a longpoll on the fruit category asking for events less
+	// than 1s old, confirm the most recent fruit (orange) was removed
+	since_time := timeToEpochMilliseconds(time.Now().Add(-1 * time.Second))
+	subscriptionHandler := ajaxHandler(manager.SubscriptionHandler)
+	req, _ := http.NewRequest("GET", fmt.Sprintf("?timeout=1&category=fruit&since_time=%d", since_time), nil)
+	w := NewCloseNotifierRecorder()
+	subscriptionHandler.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("SubscriptionHandler didn't return %v", http.StatusOK)
+	}
+	var eventResponse eventResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &eventResponse); err != nil {
+		t.Errorf("Failed to decode json: %q", err)
+	}
+	if len(*eventResponse.Events) != 1 {
+		t.Errorf("Unexpected number of events.  Expected: %d, got: %d", 1, len(*eventResponse.Events))
+	}
+	if (*eventResponse.Events)[0].Category != "fruit" {
+		t.Errorf("Unexpected category.  Expected: %q, got: %q", "fruit", (*eventResponse.Events)[0].Category)
+	}
+	if (*eventResponse.Events)[0].Data != "orange" {
+		t.Errorf("Unexpected data.  Expected: %q, got: %q", "orange", (*eventResponse.Events)[0].Data)
+	}
+	// Also confirm that orange is now gone out of the buffer
+	if len(sm.SubEventBuffer) != 2 {
+		t.Errorf("Unexpected category-to-buffer map size.  was: %d, expected %d",
+			len(sm.SubEventBuffer), 2)
+	}
+	fruit_buffer, fruit_found = sm.SubEventBuffer["fruit"]
+	veggie_buffer, veggies_found = sm.SubEventBuffer["veggie"]
+	if !fruit_found || !veggies_found {
+		t.Errorf("failed to find fruit and veggie category event buffers")
+	}
+	if fruit_buffer.eventBuffer_ptr.List.Len() != 1 {
+		t.Errorf("Unexpected number of fruit events.  was: %d, expected %d",
+			fruit_buffer.eventBuffer_ptr.List.Len(), 1)
+	}
+	if fruit_buffer.eventBuffer_ptr.List.Front().Value.(*lpEvent).Data.(string) != "apple" {
+		t.Errorf("Unexpected event left in fruit buffer.  was: %s, expected: %s.",
+			fruit_buffer.eventBuffer_ptr.List.Front().Value.(*lpEvent).Data.(string), "apple")
+	}
+	if veggie_buffer.eventBuffer_ptr.List.Len() != 2 {
+		t.Errorf("Unexpected number of veggie events.  was: %d, expected %d",
+			veggie_buffer.eventBuffer_ptr.List.Len(), 2)
+	}
+	if sm.EventTimeToLiveSeconds != FOREVER && sm.bufferPriorityQueue.Len() != 2 {
+		t.Errorf("Unexpected heap size.  was: %d, expected: %d", sm.bufferPriorityQueue.Len(), 2)
+	}
+	if sm.EventTimeToLiveSeconds != FOREVER {
+		// NOTE: the heap priority doesn't change when an event is removed due
+		// to the DeleteEventAfterFirstRetrieval setting.  This is by design because
+		// it is complicated to know what to update the priority to, and it doesn't
+		// harm or break the other behavior to skip updating it, the worst that
+		// happens is a frivolous expiration check that removes nothing.
+		if priority, peakErr := sm.bufferPriorityQueue.peakTopPriority(); peakErr != nil {
+			t.Errorf("Unexpected error checking top priority: %v", peakErr)
+		} else {
+			if priority != priority_before_removal {
+				t.Errorf("Expected priority to be: %d, was: %d", priority,
+					priority_before_removal)
+			}
+		}
+	}
 
-// TODO: test the Event TTL cleanup that happens regularly regardless of client/event activity
+	// Now request all veggie events (since beginning of time), confirm all
+	// veggies removed
+	since_time = timeToEpochMilliseconds(time.Now().Add(-60 * time.Second))
+	subscriptionHandler = ajaxHandler(manager.SubscriptionHandler)
+	req, _ = http.NewRequest("GET", fmt.Sprintf("?timeout=1&category=veggie&since_time=%d", since_time), nil)
+	w = NewCloseNotifierRecorder()
+	subscriptionHandler.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("SubscriptionHandler didn't return %v", http.StatusOK)
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &eventResponse); err != nil {
+		t.Errorf("Failed to decode json: %q", err)
+	}
+	if len(*eventResponse.Events) != 2 {
+		t.Errorf("Unexpected number of events.  Expected: %d, got: %d", 2, len(*eventResponse.Events))
+	}
+	if (*eventResponse.Events)[0].Category != "veggie" {
+		t.Errorf("Unexpected category.  Expected: %q, got: %q", "veggie", (*eventResponse.Events)[0].Category)
+	}
+	if (*eventResponse.Events)[0].Data != "corn" {
+		t.Errorf("Unexpected data.  Expected: %q, got: %q", "corn", (*eventResponse.Events)[0].Data)
+	}
+	if (*eventResponse.Events)[1].Category != "veggie" {
+		t.Errorf("Unexpected category.  Expected: %q, got: %q", "veggie", (*eventResponse.Events)[0].Category)
+	}
+	if (*eventResponse.Events)[1].Data != "carrot" {
+		t.Errorf("Unexpected data.  Expected: %q, got: %q", "carrot", (*eventResponse.Events)[0].Data)
+	}
+	time.Sleep(50 * time.Millisecond)
+	if len(sm.SubEventBuffer) != 1 {
+		t.Errorf("Unexpected category-to-buffer map size.  was: %d, expected %d",
+			len(sm.SubEventBuffer), 1)
+	}
+	fruit_buffer, fruit_found = sm.SubEventBuffer["fruit"]
+	veggie_buffer, veggies_found = sm.SubEventBuffer["veggie"]
+	if !fruit_found || veggies_found {
+		t.Errorf("expected fruit to be found but not veggies")
+	}
 
-// TODO: any additional tests based on code coverage
+	if fruit_buffer.eventBuffer_ptr.List.Len() != 1 {
+		t.Errorf("Unexpected number of fruit events.  was: %d, expected %d",
+			fruit_buffer.eventBuffer_ptr.List.Len(), 1)
+	}
+	if fruit_buffer.eventBuffer_ptr.List.Front().Value.(*lpEvent).Data.(string) != "apple" {
+		t.Errorf("Unexpected event left in fruit buffer.  was: %s, expected: %s.",
+			fruit_buffer.eventBuffer_ptr.List.Front().Value.(*lpEvent).Data.(string), "apple")
+	}
+	if sm.EventTimeToLiveSeconds != FOREVER {
+		// Heap still not changed for same reasons as before
+		if priority, peakErr := sm.bufferPriorityQueue.peakTopPriority(); peakErr != nil {
+			t.Errorf("Unexpected error checking top priority: %v", peakErr)
+		} else {
+			if priority != priority_before_removal {
+				t.Errorf("Expected priority to be: %d, was: %d", priority,
+					priority_before_removal)
+			}
+		}
+	}
+}
+
+func Test_LongpollManager_DeleteOnFetch(t *testing.T) {
+	manager, _ := StartLongpoll(Options{
+		LoggingEnabled:                 true,
+		MaxLongpollTimeoutSeconds:      120,
+		MaxEventBufferSize:             100,
+		EventTimeToLiveSeconds:         60,
+		DeleteEventAfterFirstRetrieval: true,
+	})
+	deleteOnFetchTest(manager, t)
+}
+
+func Test_LongpollManager_DeleteOnFetch_ForeverTTL(t *testing.T) {
+	manager, _ := StartLongpoll(Options{
+		LoggingEnabled:                 true,
+		MaxLongpollTimeoutSeconds:      120,
+		MaxEventBufferSize:             100,
+		EventTimeToLiveSeconds:         FOREVER,
+		DeleteEventAfterFirstRetrieval: true,
+	})
+	deleteOnFetchTest(manager, t)
+}
+
+func Test_LongpollManager_DeleteOnFetch_SkipBuffering(t *testing.T) {
+	// Publish an event while a client is in the middle of a longpoll and
+	// confirm that the event was received by the client and never buffered
+	// on the server.
+	manager, _ := StartLongpoll(Options{
+		LoggingEnabled:                 true,
+		MaxLongpollTimeoutSeconds:      120,
+		MaxEventBufferSize:             100,
+		EventTimeToLiveSeconds:         60 * 10,
+		DeleteEventAfterFirstRetrieval: true,
+	})
+	sm := manager.subManager
+	subscriptionHandler := ajaxHandler(manager.SubscriptionHandler)
+
+	if len(sm.SubEventBuffer) != 0 {
+		t.Errorf("Unexpected category-to-buffer map size.  was: %d, expected %d",
+			len(sm.SubEventBuffer), 0)
+	}
+	if sm.EventTimeToLiveSeconds != FOREVER && sm.bufferPriorityQueue.Len() != 0 {
+		t.Errorf("Unexpected heap size.  was: %d, expected: %d", sm.bufferPriorityQueue.Len(), 0)
+	}
+
+	// Valid request, but we don't have any events published,
+	// so this will wait until a publish or a timeout, in this case we'll get
+	// an event.
+	req, _ := http.NewRequest("GET", "?timeout=30&category=fruit", nil)
+	w := NewCloseNotifierRecorder()
+	// Publish two events, only the second is for our subscription category
+	// Note how these events occur after the client subscribed
+	// if they occurred before, since we don't provide a since_time url param
+	// we'd default to now and skip those events.
+	go func() {
+		time.Sleep(1500 * time.Millisecond)
+		manager.Publish("fruit", "peach")
+	}()
+	subscriptionHandler.ServeHTTP(w, req)
+	// Confirm we got the correct event
+	if w.Code != http.StatusOK {
+		t.Errorf("SubscriptionHandler didn't return %v", http.StatusOK)
+	}
+	var eventResponse eventResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &eventResponse); err != nil {
+		t.Errorf("Failed to decode json: %q", err)
+	}
+	if len(*eventResponse.Events) != 1 {
+		t.Errorf("Unexpected number of events.  Expected: %d, got: %d", 1, len(*eventResponse.Events))
+	}
+	if (*eventResponse.Events)[0].Category != "fruit" {
+		t.Errorf("Unexpected category.  Expected: %q, got: %q", "fruit", (*eventResponse.Events)[0].Category)
+	}
+	if (*eventResponse.Events)[0].Data != "peach" {
+		t.Errorf("Unexpected data.  Expected: %q, got: %q", "peach", (*eventResponse.Events)[0].Data)
+	}
+	// Ensure nothing was buffered:
+	if len(sm.SubEventBuffer) != 0 {
+		t.Errorf("Unexpected category-to-buffer map size.  was: %d, expected %d",
+			len(sm.SubEventBuffer), 0)
+	}
+	if sm.EventTimeToLiveSeconds != FOREVER && sm.bufferPriorityQueue.Len() != 0 {
+		t.Errorf("Unexpected heap size.  was: %d, expected: %d", sm.bufferPriorityQueue.Len(), 0)
+	}
+	// Don't forget to kill our pubsub manager's run goroutine
+	manager.Shutdown()
+}
+
+func Test_LongpollManager_PurgingOldCategories(t *testing.T) {
+	// Confirm that old categories get removed by purge.
+	// After any activity we check to see if it's time to call purge.
+	manager, _ := StartLongpoll(Options{
+		LoggingEnabled:            true,
+		MaxLongpollTimeoutSeconds: 120,
+		MaxEventBufferSize:        100,
+		EventTimeToLiveSeconds:    1,
+	})
+	sm := manager.subManager
+	sm.staleCategoryPurgePeriodSeconds = 2
+	if len(sm.SubEventBuffer) != 0 {
+		t.Errorf("Unexpected category-to-buffer map size.  was: %d, expected %d",
+			len(sm.SubEventBuffer), 0)
+	}
+	if sm.bufferPriorityQueue.Len() != 0 {
+		t.Errorf("Unexpected heap size.  was: %d, expected: %d", sm.bufferPriorityQueue.Len(), 0)
+	}
+	manager.Publish("fruit", "apple")
+	time.Sleep(10 * time.Millisecond)
+	manager.Publish("fruit", "orange")
+	time.Sleep(2000 * time.Millisecond)
+	// It's now been over 2s since both fruit events published, and since our
+	// TTL setting is 1s, these are both expired.
+	// But confirm purge didn't happen yet even tho 2s (the purge period) has
+	// elapsed.
+	if len(sm.SubEventBuffer) != 1 {
+		t.Errorf("Unexpected category-to-buffer map size.  was: %d, expected %d",
+			len(sm.SubEventBuffer), 1)
+	}
+	fruit_buffer, fruit_found := sm.SubEventBuffer["fruit"]
+	veggie_buffer, veggies_found := sm.SubEventBuffer["veggie"]
+	if !fruit_found || veggies_found {
+		t.Errorf("should find fruit but not veggie buffer")
+	}
+	if fruit_buffer.eventBuffer_ptr.List.Len() != 2 {
+		t.Errorf("Unexpected number of fruit events.  was: %d, expected %d",
+			fruit_buffer.eventBuffer_ptr.List.Len(), 2)
+	}
+	if sm.bufferPriorityQueue.Len() != 1 {
+		t.Errorf("Unexpected heap size.  was: %d, expected: %d", sm.bufferPriorityQueue.Len(), 1)
+	}
+
+	// Publish an event which will force us to check if elapsed time is greater
+	// than purge period and kick off a purge.
+	manager.Publish("veggie", "corn")
+	time.Sleep(50 * time.Millisecond)
+
+	// Confirm fruit events were destroyed
+	if len(sm.SubEventBuffer) != 1 {
+		t.Errorf("Unexpected category-to-buffer map size.  was: %d, expected %d",
+			len(sm.SubEventBuffer), 1)
+	}
+	fruit_buffer, fruit_found = sm.SubEventBuffer["fruit"]
+	veggie_buffer, veggies_found = sm.SubEventBuffer["veggie"]
+	if fruit_found || !veggies_found {
+		t.Errorf("Expected to find veggies but not fruit buffer.")
+	}
+	if veggie_buffer.eventBuffer_ptr.List.Len() != 1 {
+		t.Errorf("Unexpected number of veggie events.  was: %d, expected %d",
+			veggie_buffer.eventBuffer_ptr.List.Len(), 1)
+	}
+	if sm.bufferPriorityQueue.Len() != 1 {
+		t.Errorf("Unexpected heap size.  was: %d, expected: %d", sm.bufferPriorityQueue.Len(), 1)
+	}
+}
+
+func Test_LongpollManager_PurgingOldCategories_Inactivity(t *testing.T) {
+	// Confirm that old categories get removed by purge even if there is no
+	// activity going on.  This purge is accomplished via the periodic
+	// check regardless of activity.
+	manager, _ := StartLongpoll(Options{
+		LoggingEnabled:            true,
+		MaxLongpollTimeoutSeconds: 120,
+		MaxEventBufferSize:        100,
+		EventTimeToLiveSeconds:    1,
+	})
+	sm := manager.subManager
+	sm.staleCategoryPurgePeriodSeconds = 2
+	if len(sm.SubEventBuffer) != 0 {
+		t.Errorf("Unexpected category-to-buffer map size.  was: %d, expected %d",
+			len(sm.SubEventBuffer), 0)
+	}
+	if sm.bufferPriorityQueue.Len() != 0 {
+		t.Errorf("Unexpected heap size.  was: %d, expected: %d", sm.bufferPriorityQueue.Len(), 0)
+	}
+	manager.Publish("fruit", "apple")
+	time.Sleep(10 * time.Millisecond)
+	manager.Publish("fruit", "orange")
+	time.Sleep(2000 * time.Millisecond)
+	// It's now been over 2s since both fruit events published, and since our
+	// TTL setting is 1s, these are both expired.
+	// But confirm purge didn't happen yet even tho 2s (the purge period) has
+	// elapsed.
+	if len(sm.SubEventBuffer) != 1 {
+		t.Errorf("Unexpected category-to-buffer map size.  was: %d, expected %d",
+			len(sm.SubEventBuffer), 1)
+	}
+	fruit_buffer, fruit_found := sm.SubEventBuffer["fruit"]
+	if !fruit_found {
+		t.Errorf("should find fruit but not veggie buffer")
+	}
+	if fruit_buffer.eventBuffer_ptr.List.Len() != 2 {
+		t.Errorf("Unexpected number of fruit events.  was: %d, expected %d",
+			fruit_buffer.eventBuffer_ptr.List.Len(), 2)
+	}
+	if sm.bufferPriorityQueue.Len() != 1 {
+		t.Errorf("Unexpected heap size.  was: %d, expected: %d", sm.bufferPriorityQueue.Len(), 1)
+	}
+	// Wait until we do our purge check due to inactivity, then confirm
+	// data was cleared out.
+	time.Sleep(3100 * time.Millisecond)
+
+	// Confirm fruit events were destroyed
+	if len(sm.SubEventBuffer) != 0 {
+		t.Errorf("Unexpected category-to-buffer map size.  was: %d, expected %d",
+			len(sm.SubEventBuffer), 0)
+	}
+	fruit_buffer, fruit_found = sm.SubEventBuffer["fruit"]
+	if fruit_found {
+		t.Errorf("Expected to not find fruit buffer.")
+	}
+	if sm.bufferPriorityQueue.Len() != 0 {
+		t.Errorf("Unexpected heap size.  was: %d, expected: %d", sm.bufferPriorityQueue.Len(), 0)
+	}
+}
