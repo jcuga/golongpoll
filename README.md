@@ -21,23 +21,24 @@ To use, create a ```LongpollManager``` and then use it to publish events and exp
 import	"github.com/jcuga/golongpoll"
 
 // This launches a goroutine and creates channels for all the plumbing
-manager, err := golongpoll.CreateManager()
+manager, err := golongpoll.StartLongpoll(golongpoll.Options{})  // default options
+
+// Pass the manager around or create closures and publish:
+manager.Publish("subscription-category", "Some data.  Can be string or any obj convertable to JSON")
+manager.Publish("different-category", "More data")
 
 // Expose events to browsers
 // See subsection on how to interact with the subscription handler
 http.HandleFunc("/events", manager.SubscriptionHandler)
 http.ListenAndServe("127.0.0.1:8081", nil)
-
-// Pass the manager around or create closures and publish:
-manager.Publish("subscription-category", "Some data.  Can be string or any obj convertable to JSON")
-manager.Publish("different-category", "More data")
 ```
 Note that you can add extra access-control, validation, or other behavior on top of the manager's SubscriptionHandler.  See the [advanced example](#advanced).  This example also shows how to publish a more complicated payload JSON object.
 
-You can also configure the LongpollManager by using
-```go
-golongpoll.CreateCustomManager(...)
-```
+You can also configure the ```LongpollManager``` by defining values in the ```golongpoll.Options``` param passed to ```StartLongpoll(opts)```
+
+Options
+-----
+TODO
 
 HTTP Subscription Handler
 -----
@@ -45,7 +46,7 @@ The ```LongpollManager``` has a field called ```SubscriptionHandler``` that you 
 
 This HTTP handler has the following URL query params as input.
 
-* ```timeout``` number of seconds the server should wait until issuing a timeout response in the event there are no new events during the client's longpoll.  The default manager created via ```CreateManager``` has a max timeout of 180 seconds, but you can customize this by using ```CreateCustomManager```
+* ```timeout``` number of seconds the server should wait until issuing a timeout response in the event there are no new events during the client's longpoll.  The default manager has a max timeout of 120 seconds, but you can customize this by using ```Options.MaxLongpollTimeoutSeconds```
 * ```category``` the subscription category to subscribe to.  When you publish an event, you publish it on a specific category.
 * ```since_time``` optional.  the number of milliseconds since epoch.  If not provided, defaults to current time.  This tells the longpoll server to only give you events that have occurred since this time.  
 
