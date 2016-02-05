@@ -1,14 +1,3 @@
-// A Priority Queue (min heap) implemented with go's heap container.
-// Adapted from go's example at: https://golang.org/pkg/container/heap/
-//
-// This priorityQueue is used to keep track of eventBuffer objects in order of
-// oldest last-event-timestamp so that we can more efficiently purge buffers
-// that have expired events.
-//
-// The priority here will be a timestamp in milliseconds since epoch (int64)
-// with lower values (older timestamps) being at the top of the heap/queue and
-// higher values (more recent timestamps) being further down.
-// So this is a Min Heap.
 package golongpoll
 
 import (
@@ -33,6 +22,18 @@ type expiringBuffer struct {
 	index int
 }
 
+// A Priority Queue (min heap) implemented with go's heap container.
+// Adapted from go's example at: https://golang.org/pkg/container/heap/
+//
+// This priorityQueue is used to keep track of eventBuffer objects in order of
+// oldest last-event-timestamp so that we can more efficiently purge buffers
+// that have expired events.
+//
+// The priority here will be a timestamp in milliseconds since epoch (int64)
+// with lower values (older timestamps) being at the top of the heap/queue and
+// higher values (more recent timestamps) being further down.
+// So this is a Min Heap.
+//
 // A priorityQueue implements heap.Interface and holds Items.
 type priorityQueue []*expiringBuffer
 
