@@ -516,6 +516,12 @@ func Test_LongpollManager_WebClient_Disconnect_RemoveClientSub(t *testing.T) {
 	// disconnect in 2 seconds which is earlier.
 	req, _ := http.NewRequest("GET", "?timeout=5&category=veggies", nil)
 	w := NewCloseNotifierRecorder()
+	// As of go 1.7, calls to t.Error, t.Fatal, after a test exits causes a panic.
+	// Before, these were suppressed.  So as it turns out, this test's goroutine
+	// that spawns here was outliving the test.  Now let's make the test body
+	// explicitly wait for it.
+	// see thread here: https://github.com/golang/go/issues/15976
+	goroutine_done := make(chan bool)
 	go func() {
 		time.Sleep(time.Duration(250) * time.Millisecond)
 		// confirm subscription entry exists, with one client
@@ -528,16 +534,30 @@ func Test_LongpollManager_WebClient_Disconnect_RemoveClientSub(t *testing.T) {
 		time.Sleep(time.Duration(1) * time.Second)
 		w.CloseNotifier <- true
 		time.Sleep(time.Duration(1) * time.Second)
-		// Confirm subscription entry exists, but has no clients anymore
-		if _, found := manager.subManager.ClientSubChannels["veggies"]; !found {
-			t.Errorf("Expected client sub channel to exist.")
+		// Confirm that the subscription entry no longer exists.
+		// Before, this test asserted that the entry ('veggie' key in the map)
+		// existed, but the value listed no clients.  But code was changed to auto
+		// remove subscription keys in this map if there are no clients listening.
+		// Since these asserts were erroneously firing after the test body exited
+		// (and this is undefined behavior and pre go 1.7 it's simply ignored),
+		// this bad assertion was never failing when it should have.
+		// Once the test body was forced to wait for it's spawned goroutine to exit,
+		// the old assertion started failing.
+		// This test is now updated to assert that the key "veggies" no longer
+		// exists since we're explicitly removing map entries when the value is
+		// an empty container.
+		if _, found := manager.subManager.ClientSubChannels["veggies"]; found {
+			t.Errorf("Expected client sub channel to be auto removed when 0 clients.")
 		}
-		if val, _ := manager.subManager.ClientSubChannels["veggies"]; len(val) != 0 {
-			t.Errorf("Expected sub channel to have no more clients subscribed")
-		}
+		goroutine_done <- true
 	}()
 
 	subscriptionHandler.ServeHTTP(w, req)
+
+	// causes test body to block until the above spawned goroutine finishes.
+	// Otherwise this will panic in go 1.7 and later :)
+	<-goroutine_done
+
 	// Don't forget to kill our pubsub manager's run goroutine
 	manager.Shutdown()
 }
