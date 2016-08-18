@@ -34,6 +34,16 @@ import (
 	"github.com/jcuga/golongpoll"
 )
 
+// Avoid XMLHTTPRequest errors
+func addCorsHeaders(fn http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		fn(w, r)
+	}
+}
+
 func main() {
 	manager, err := golongpoll.StartLongpoll(golongpoll.Options{
 		LoggingEnabled:                 true,
@@ -48,9 +58,9 @@ func main() {
 	// Serve our example driver webpage
 	http.HandleFunc("/advanced", AdvancedExampleHomepage)
 	// Serve handler that generates events
-	http.HandleFunc("/advanced/user/action", getUserActionHandler(manager))
+	http.HandleFunc("/advanced/user/action", addCorsHeaders(getUserActionHandler(manager)))
 	// Serve handler that subscribes to events.
-	http.HandleFunc("/advanced/events", getEventSubscriptionHandler(manager))
+	http.HandleFunc("/advanced/events", addCorsHeaders(getEventSubscriptionHandler(manager)))
 	// Start webserver
 	fmt.Println("Serving webpage at http://127.0.0.1:8081/advanced")
 	http.ListenAndServe("127.0.0.1:8081", nil)
