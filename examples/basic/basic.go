@@ -35,19 +35,6 @@ import (
 	"github.com/jcuga/golongpoll"
 )
 
-// Avoid XMLHTTPRequest errors
-// Since http is being served on 127.0.0.1, trying to access the demo from
-// 'localhost' will result in CORS violations (but using 127.0.0.1 works...)
-// This is added so new users aren't scared off by a seemingly broken demo.
-func addCorsHeaders(fn http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-		fn(w, r)
-	}
-}
-
 func main() {
 	manager, err := golongpoll.StartLongpoll(golongpoll.Options{
 		LoggingEnabled: true,
@@ -63,7 +50,7 @@ func main() {
 	http.HandleFunc("/basic", BasicExampleHomepage)
 
 	// Serve our event subscription web handler
-	http.HandleFunc("/basic/events", addCorsHeaders(manager.SubscriptionHandler))
+	http.HandleFunc("/basic/events", manager.SubscriptionHandler)
 
 	fmt.Println("Serving webpage at http://127.0.0.1:8081/basic")
 	http.ListenAndServe("127.0.0.1:8081", nil)
@@ -132,7 +119,7 @@ func BasicExampleHomepage(w http.ResponseWriter, r *http.Request) {
         if (sinceTime) {
             optionalSince = "&since_time=" + sinceTime;
         }
-        var pollUrl = "http://127.0.0.1:8081/basic/events?timeout=" + timeout + "&category=" + category + optionalSince;
+        var pollUrl = "/basic/events?timeout=" + timeout + "&category=" + category + optionalSince;
         // how long to wait before starting next longpoll request in each case:
         var successDelay = 10;  // 10 ms
         var errorDelay = 3000;  // 3 sec

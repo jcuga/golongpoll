@@ -34,19 +34,6 @@ import (
 	"github.com/jcuga/golongpoll"
 )
 
-// Avoid XMLHTTPRequest errors
-// Since http is being served on 127.0.0.1, trying to access the demo from
-// 'localhost' will result in CORS violations (but using 127.0.0.1 works...)
-// This is added so new users aren't scared off by a seemingly broken demo.
-func addCorsHeaders(fn http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-		fn(w, r)
-	}
-}
-
 func main() {
 	manager, err := golongpoll.StartLongpoll(golongpoll.Options{
 		LoggingEnabled:                 true,
@@ -61,9 +48,9 @@ func main() {
 	// Serve our example driver webpage
 	http.HandleFunc("/advanced", AdvancedExampleHomepage)
 	// Serve handler that generates events
-	http.HandleFunc("/advanced/user/action", addCorsHeaders(getUserActionHandler(manager)))
+	http.HandleFunc("/advanced/user/action", getUserActionHandler(manager))
 	// Serve handler that subscribes to events.
-	http.HandleFunc("/advanced/events", addCorsHeaders(getEventSubscriptionHandler(manager)))
+	http.HandleFunc("/advanced/events", getEventSubscriptionHandler(manager))
 	// Start webserver
 	fmt.Println("Serving webpage at http://127.0.0.1:8081/advanced")
 	http.ListenAndServe("127.0.0.1:8081", nil)
@@ -256,7 +243,7 @@ func AdvancedExampleHomepage(w http.ResponseWriter, r *http.Request) {
         if (yourActionsSinceTime) {
             optionalSince = "&since_time=" + yourActionsSinceTime;
         }
-        var pollUrl = "http://127.0.0.1:8081/advanced/events?user=%s&timeout=" + timeout + "&category=" + yourActionsCategory + optionalSince;
+        var pollUrl = "/advanced/events?user=%s&timeout=" + timeout + "&category=" + yourActionsCategory + optionalSince;
         // how long to wait before starting next longpoll request in each case:
         var successDelay = 10;  // 10 ms
         var errorDelay = 3000;  // 3 sec
@@ -317,7 +304,7 @@ func AdvancedExampleHomepage(w http.ResponseWriter, r *http.Request) {
         if (publicActionsSinceTime) {
             optionalSince = "&since_time=" + publicActionsSinceTime;
         }
-        var pollUrl = "http://127.0.0.1:8081/advanced/events?user=%s&timeout=" + timeout + "&category=" + publicActionsCategory + optionalSince;
+        var pollUrl = "/advanced/events?user=%s&timeout=" + timeout + "&category=" + publicActionsCategory + optionalSince;
         // how long to wait before starting next longpoll request in each case:
         var successDelay = 10;  // 10 ms
         var errorDelay = 3000;  // 3 sec
@@ -375,7 +362,7 @@ $( "#action-button" ).click(function() {
 	if ($("#isPublic").is(':checked')) {
 		optionalPublic = "&public=true";
 	}
-    var actionSubmitUrl = "http://127.0.0.1:8081/advanced/user/action?user=%s&action=" + actionString + optionalPublic;
+    var actionSubmitUrl = "/advanced/user/action?user=%s&action=" + actionString + optionalPublic;
 
 	$.ajax({ url: actionSubmitUrl,
             success: function(data) {
