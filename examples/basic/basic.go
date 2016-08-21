@@ -36,6 +36,9 @@ import (
 )
 
 // Avoid XMLHTTPRequest errors
+// Since http is being served on 127.0.0.1, trying to access the demo from
+// 'localhost' will result in CORS violations (but using 127.0.0.1 works...)
+// This is added so new users aren't scared off by a seemingly broken demo.
 func addCorsHeaders(fn http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
