@@ -58,6 +58,8 @@ func NewClient(url *url.URL, category string) *Client {
 	}
 }
 
+// Start the polling of the events on the URL defined in the client
+// Will send the events in the EventsChan of the client
 func (c *Client) Start() {
 	u := c.url
 	fmt.Println("Now observing changes on", u.String())
@@ -101,7 +103,7 @@ func (c *Client) Start() {
 }
 
 func (c *Client) Stop() {
-	// Changing the runID will have any previous goroutine
+	// Changing the runID will have any previous goroutine ignore any events it may receive
 	atomic.AddUint64(&(c.runID), 1)
 }
 
@@ -127,7 +129,7 @@ func (c Client) fetchEvents(since int64) (PollResponse, error) {
 	var pr PollResponse
 	err = decoder.Decode(&pr)
 	if err != nil {
-		fmt.Sprintf("Error while decoding poll response: %s", err)
+		fmt.Errorf("Error while decoding poll response: %s", err)
 		return PollResponse{}, err
 	}
 
