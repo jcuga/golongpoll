@@ -34,6 +34,8 @@ c.Stop()
 
  * `Timeout`: Defines the timeout used when calling the longpoll server
  * `Reattempt`: Defines the amount of time the client waits after an unsuccessful connection.
+ * `BasicAuthUsername`: When defined along with the BasicAuthPassword, it will use the credentials in basic HTTP authentication
+ * `BasicAuthPassword`: When defined along with the BasicAuthUsername, it will use the credentials in basic HTTP authentication
 
 The client's HTTP client can be overiden. Example:
 

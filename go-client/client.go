@@ -42,6 +42,10 @@ type Client struct {
 	runID uint64
 	// The HTTP client to perform the requests, any changes on this should be done prior to starting the client the first time
 	HttpClient *http.Client
+	// The username to be used for basic HTTP authentication
+	BasicAuthUsername string
+	// The password to be used for basic HTTP authentication
+	BasicAuthPassword string
 }
 
 // Instantiate a new client to connect to a given URL and send the events into a channel
@@ -52,7 +56,7 @@ func NewClient(url *url.URL, category string) *Client {
 		url:        url,
 		category:   category,
 		Timeout:    DEFAULT_TIMEOUT,
-		Reattempt:  DEFAULT_REATTEMPT,
+		Reattempt:  DEFAULT_REATTEMPT * time.Second,
 		EventsChan: make(chan PollEvent),
 		HttpClient: &http.Client{},
 	}
@@ -118,9 +122,19 @@ func (c Client) fetchEvents(since int64) (PollResponse, error) {
 	query.Set("timeout", fmt.Sprintf("%d", c.Timeout))
 	u.RawQuery = query.Encode()
 
-	resp, err := c.HttpClient.Get(u.String())
+	req, _ := http.NewRequest("GET", u.String(), nil)
+	if c.BasicAuthUsername != "" && c.BasicAuthPassword != "" {
+		req.SetBasicAuth(c.BasicAuthUsername, c.BasicAuthPassword)
+	}
+
+	resp, err := c.HttpClient.Do(req)
 	if err != nil {
 		msg := fmt.Sprintf("Error while connecting to %s to observe changes. Error was: %s", u, err)
+		return PollResponse{}, errors.New(msg)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		msg := fmt.Sprintf("Wrong status code received from longpoll server: %d", resp.StatusCode)
 		return PollResponse{}, errors.New(msg)
 	}
 
