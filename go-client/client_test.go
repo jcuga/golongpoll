@@ -44,7 +44,7 @@ func TestClient(t *testing.T) {
 
 	u, manager := testServer()
 
-	c := NewClient(*u, category)
+	c := NewClient(u, category)
 	// Have a small timeout for tests
 	c.Timeout = 1
 
