@@ -35,7 +35,7 @@ type Client struct {
 	// Timeout controls the timeout in all the requests, can be changed after instantiating the client
 	Timeout uint64
 	// Reattempt controls the amount of time the client waits to reconnect to the server after a failure
-	Reattempt uint64
+	Reattempt time.Duration
 	// Will get all the events data
 	EventsChan chan json.RawMessage
 	// Flag that tracks the current run ID
@@ -75,7 +75,7 @@ func (c *Client) Start() {
 			if err != nil {
 				fmt.Println(err)
 				fmt.Printf("Reattempting to connect to %s in %d seconds \n", u.String(), c.Reattempt)
-				time.Sleep(time.Duration(c.Reattempt) * time.Second)
+				time.Sleep(c.Reattempt)
 				continue
 			}
 
@@ -107,6 +107,7 @@ func (c *Client) Stop() {
 	atomic.AddUint64(&(c.runID), 1)
 }
 
+// Call the longpoll server to get the events since a specific timestamp
 func (c Client) fetchEvents(since int64) (PollResponse, error) {
 	u := c.url
 	fmt.Println("Checking for changes events since", since, "on URL", u.String())
