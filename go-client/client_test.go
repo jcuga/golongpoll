@@ -53,9 +53,9 @@ func TestClient(t *testing.T) {
 	manager.Publish(category, "test")
 
 	select {
-	case raw := <-c.EventsChan:
+	case e := <-c.EventsChan:
 		var data string
-		err := json.Unmarshal(raw, &data)
+		err := json.Unmarshal(e.Data, &data)
 		if err != nil {
 			t.Error("Error while decoding event from channel")
 		}
@@ -91,9 +91,9 @@ func TestClient(t *testing.T) {
 
 	for i := 0; i < len(expectedResults); i++ {
 		select {
-		case raw := <-c.EventsChan:
+		case e := <-c.EventsChan:
 			var data string
-			err := json.Unmarshal(raw, &data)
+			err := json.Unmarshal(e.Data, &data)
 			if err != nil {
 				t.Error("Error while decoding event from channel")
 			}

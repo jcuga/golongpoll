@@ -37,7 +37,7 @@ type Client struct {
 	// Reattempt controls the amount of time the client waits to reconnect to the server after a failure
 	Reattempt time.Duration
 	// Will get all the events data
-	EventsChan chan json.RawMessage
+	EventsChan chan PollEvent
 	// Flag that tracks the current run ID
 	runID uint64
 	// The HTTP client to perform the requests, any changes on this should be done prior to starting the client the first time
@@ -53,7 +53,7 @@ func NewClient(url *url.URL, category string) *Client {
 		category:   category,
 		Timeout:    DEFAULT_TIMEOUT,
 		Reattempt:  DEFAULT_REATTEMPT,
-		EventsChan: make(chan json.RawMessage),
+		EventsChan: make(chan PollEvent),
 		HttpClient: &http.Client{},
 	}
 }
@@ -90,7 +90,7 @@ func (c *Client) Start() {
 				fmt.Println("Got", len(pr.Events), "event(s) from URL", u.String())
 				for _, event := range pr.Events {
 					since = event.Timestamp
-					c.EventsChan <- event.Data
+					c.EventsChan <- event
 				}
 			} else {
 				// Only push timestamp forward if its greater than the last we checked
@@ -130,7 +130,7 @@ func (c Client) fetchEvents(since int64) (PollResponse, error) {
 	var pr PollResponse
 	err = decoder.Decode(&pr)
 	if err != nil {
-		fmt.Errorf("Error while decoding poll response: %s", err)
+		fmt.Println("Error while decoding poll response: %s", err)
 		return PollResponse{}, err
 	}
 
