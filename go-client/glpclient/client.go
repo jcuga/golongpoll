@@ -67,8 +67,6 @@ func NewClient(url *url.URL, category string) *Client {
 	}
 }
 
-func (c *Client) EnableLogging()
-
 // Start the polling of the events on the URL defined in the client
 // Will send the events in the EventsChan of the client
 func (c *Client) Start() {
