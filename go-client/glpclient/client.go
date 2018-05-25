@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"net/url"
 	"sync/atomic"
@@ -66,7 +67,7 @@ func NewClient(url *url.URL, category string) *Client {
 // Will send the events in the EventsChan of the client
 func (c *Client) Start() {
 	u := c.url
-	fmt.Println("Now observing changes on", u.String())
+	log.Println("Now observing changes on", u.String())
 
 	atomic.AddUint64(&(c.runID), 1)
 	currentRunID := atomic.LoadUint64(&(c.runID))
@@ -77,8 +78,8 @@ func (c *Client) Start() {
 			pr, err := c.fetchEvents(since)
 
 			if err != nil {
-				fmt.Println(err)
-				fmt.Printf("Reattempting to connect to %s in %d seconds \n", u.String(), c.Reattempt)
+				log.Println(err)
+				log.Printf("Reattempting to connect to %s in %d seconds", u.String(), c.Reattempt)
 				time.Sleep(c.Reattempt)
 				continue
 			}
@@ -86,12 +87,12 @@ func (c *Client) Start() {
 			// We check that its still the same runID as when this goroutine was started
 			clientRunID := atomic.LoadUint64(&(c.runID))
 			if clientRunID != runID {
-				fmt.Printf("Client on URL %s has been stopped, not sending events \n", u.String())
+				log.Printf("Client on URL %s has been stopped, not sending events", u.String())
 				return
 			}
 
 			if len(pr.Events) > 0 {
-				fmt.Println("Got", len(pr.Events), "event(s) from URL", u.String())
+				log.Println("Got", len(pr.Events), "event(s) from URL", u.String())
 				for _, event := range pr.Events {
 					since = event.Timestamp
 					c.EventsChan <- event
@@ -114,7 +115,7 @@ func (c *Client) Stop() {
 // Call the longpoll server to get the events since a specific timestamp
 func (c Client) fetchEvents(since int64) (PollResponse, error) {
 	u := c.url
-	fmt.Println("Checking for changes events since", since, "on URL", u.String())
+	log.Println("Checking for changes events since", since, "on URL", u.String())
 
 	query := u.Query()
 	query.Set("category", c.category)
@@ -144,7 +145,7 @@ func (c Client) fetchEvents(since int64) (PollResponse, error) {
 	var pr PollResponse
 	err = decoder.Decode(&pr)
 	if err != nil {
-		fmt.Println("Error while decoding poll response: %s", err)
+		log.Println("Error while decoding poll response: %s", err)
 		return PollResponse{}, err
 	}
 
