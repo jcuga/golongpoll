@@ -115,7 +115,7 @@ type Options struct {
 	DeleteEventAfterFirstRetrieval bool
 }
 
-// Creates a LongpollManager, starts the internal pub-sub goroutine and returns
+// StartLongpoll: Creates a LongpollManager, starts the internal pub-sub goroutine and returns
 // the manager reference which you can use anywhere to Publish() events or
 // attach a URL to the manager's SubscriptionHandler member.  This function
 // takes an Options struct that configures the longpoll behavior.

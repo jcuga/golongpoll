@@ -73,7 +73,7 @@ func (eb *eventBuffer) QueueEvent(event *lpEvent) error {
 	return nil
 }
 
-// GetEventsSnce will return all of the Events in our buffer that occurred after
+// GetEventsSince will return all of the Events in our buffer that occurred after
 // the given input time (since).  Returns an error value if there are any
 // objects that aren't an Event type in the buffer.  (which would be weird...)
 // Optionally removes returned events from the eventBuffer if told to do so by

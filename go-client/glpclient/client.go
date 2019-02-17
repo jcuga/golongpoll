@@ -52,7 +52,7 @@ type Client struct {
 	LoggingEnabled bool
 }
 
-// Instantiate a new client to connect to a given URL and send the events into a channel
+// NewClient: Instantiate a new client to connect to a given URL and send the events into a channel
 // The URL shouldn't contain any GET parameters although its fine if it contains some but category, since_time and timeout will be overriten
 // stubChanData must either be an empty structure of the events data or a map[string]interface{} if the events do not follow a specific structure
 func NewClient(url *url.URL, category string) *Client {

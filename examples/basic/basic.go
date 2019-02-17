@@ -83,7 +83,7 @@ func generateRandomEvents(lpManager *golongpoll.LongpollManager) {
 	}
 }
 
-// Here we're providing a webpage that shows events as they happen.
+// BasicExampleHomepage: Here we're providing a webpage that shows events as they happen.
 // In this code you'll see a sample of how to implement longpolling on the
 // client side in javascript.  I used jquery here...
 //

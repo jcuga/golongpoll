@@ -159,7 +159,7 @@ func getEventSubscriptionHandler(manager *golongpoll.LongpollManager) func(w htt
 	}
 }
 
-// Here we're providing a webpage that lets you pick a user, perform an action
+// AdvancedExampleHomepage: Here we're providing a webpage that lets you pick a user, perform an action
 // and see the recent history (last 2 min) of all your actions and any public
 // action by the other users.
 //
