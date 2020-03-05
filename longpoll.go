@@ -251,7 +251,7 @@ func getLongPollSubscriptionHandler(maxTimeoutSeconds int, subscriptionRequests 
 			if parseError != nil {
 				if loggingEnabled {
 					log.Printf("Error parsing last_event_time arg. Parm Value: %s, Error: %s.\n",
-						lastEventTimeParam, err)
+						lastEventTimeParam, parseError)
 				}
 				io.WriteString(w, "{\"error\": \"Invalid last_event_time arg.\"}")
 				return
