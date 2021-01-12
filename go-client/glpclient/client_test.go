@@ -9,7 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/davecgh/go-spew/spew"
 	"github.com/jcuga/golongpoll"
 )
 
@@ -19,7 +18,7 @@ func testEventsManager() *golongpoll.LongpollManager {
 		LoggingEnabled: true,
 	})
 	if err != nil {
-		fmt.Println("Failed to create manager: %q", err)
+		fmt.Println("Failed to create manager: ", err)
 	}
 
 	return eventsManager
@@ -182,9 +181,8 @@ func TestClientAuthentication(t *testing.T) {
 	manager.Publish(category, "test")
 
 	select {
-	case e := <-c.EventsChan:
+	case <-c.EventsChan:
 		t.Error("Received something in the events channel although the requests are unauthorized")
-		spew.Dump(e)
 
 	case <-time.After(2 * time.Second):
 		// worked as expected, the request was invalid

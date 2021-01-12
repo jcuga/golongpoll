@@ -1,20 +1,5 @@
-# golongpoll [![Build Status](https://travis-ci.org/jcuga/golongpoll.svg?branch=master)](https://travis-ci.org/jcuga/golongpoll) [![Coverage Status](https://coveralls.io/repos/jcuga/golongpoll/badge.svg?branch=master&service=github)](https://coveralls.io/github/jcuga/golongpoll?branch=master) [![GoDoc](https://godoc.org/github.com/jcuga/golongpoll?status.svg)](https://godoc.org/github.com/jcuga/golongpoll) [![Go Report Card](https://goreportcard.com/badge/jcuga/golongpoll)](https://goreportcard.com/report/jcuga/golongpoll)
+# golongpoll [![Build Status](https://travis-ci.com/jcuga/golongpoll.svg?branch=master)](https://travis-ci.com/jcuga/golongpoll) [![codecov](https://codecov.io/gh/jcuga/golongpoll/branch/master/graph/badge.svg)](https://codecov.io/gh/jcuga/golongpoll)  [![GoDoc](https://godoc.org/github.com/jcuga/golongpoll?status.svg)](https://godoc.org/github.com/jcuga/golongpoll) [![Go Report Card](https://goreportcard.com/badge/jcuga/golongpoll)](https://goreportcard.com/report/jcuga/golongpoll)
 Golang long polling library. Makes web pub-sub easy via an HTTP long-poll server.
-
-Table of contents
-=================
-  * [New in v1.1](#new-in-v11)
-  * [Basic Usage](#basic-usage)
-    * [HTTP Subscription Handler](#http-subscription-handler)
-    * [Options] (#options)
-  * [What is longpolling?](#what-is-longpolling)
-  * [Included examples](#included-examples)
-    * [Basic](#basic)
-    * [Advanced](#advanced)
-  * [More advanced use](#more-advanced-use)
-    * [Events with JSON payloads](#events-with-json-payloads)
-    * [Wrapping subscriptions](#wrapping-subscriptions)
-    * [Publishing events via the web](#publishing-events-via-the-web)
 
 New in v1.1
 =================
@@ -174,6 +159,7 @@ Try clicking around and notice the events showing up in the tables.  Try opening
 More advanced use
 =================
 All of the below topics are demonstrated in the advanced example:
+
 Events with JSON payloads
 -----
 Try passing any type that is convertible to JSON to ```Publish()```. If the type can be passed to encoding/json.Marshal(), it will work.

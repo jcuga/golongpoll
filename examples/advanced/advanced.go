@@ -46,7 +46,7 @@ func main() {
 		log.Fatalf("Failed to create manager: %q", err)
 	}
 	// Serve our example driver webpage
-	http.HandleFunc("/advanced", AdvancedExampleHomepage)
+	http.HandleFunc("/advanced", advancedExampleHomepage)
 	// Serve handler that generates events
 	http.HandleFunc("/advanced/user/action", getUserActionHandler(manager))
 	// Serve handler that subscribes to events.
@@ -67,7 +67,7 @@ func main() {
 
 // A fairly trivial json-convertable structure that demonstrates how events
 // don't have to be a plain string.  Anything JSON will work.
-type UserAction struct {
+type userAction struct {
 	User     string `json:"user"`
 	Action   string `json:"action"`
 	IsPublic bool   `json:"is_public"` // Whether or not others can see this
@@ -102,7 +102,7 @@ func getUserActionHandler(manager *golongpoll.LongpollManager) func(w http.Respo
 		if public == "true" {
 			isPublic = true
 		}
-		actionEvent := UserAction{User: user, Action: action, IsPublic: isPublic}
+		actionEvent := userAction{User: user, Action: action, IsPublic: isPublic}
 		// Publish on public subscription channel if the action is public.
 		// Everyone can see this event.
 		if isPublic {
@@ -169,7 +169,7 @@ func getEventSubscriptionHandler(manager *golongpoll.LongpollManager) func(w htt
 //
 // I was too lazy to serve this file statically.
 // This is me setting a bad example :)
-func AdvancedExampleHomepage(w http.ResponseWriter, r *http.Request) {
+func advancedExampleHomepage(w http.ResponseWriter, r *http.Request) {
 	// Hacky way to inject the current user into the webpage:
 	username := r.URL.Query().Get("user")
 	if username == "" {

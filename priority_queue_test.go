@@ -14,16 +14,16 @@ func Test_priorityQueue_Len(t *testing.T) {
 			pq.Len(), 0)
 	}
 	// add an item
-	now_ms := timeToEpochMilliseconds(time.Now())
+	nowMs := timeToEpochMilliseconds(time.Now())
 	buf := &eventBuffer{
 		list.New(),
 		100,
-		now_ms,
+		nowMs,
 	}
 	expiringBuf := &expiringBuffer{
-		eventBuffer_ptr: buf,
-		category:        "some random category",
-		priority:        now_ms,
+		eventBufferPtr: buf,
+		category:       "some random category",
+		priority:       nowMs,
 	}
 	heap.Push(&pq, expiringBuf)
 	if pq.Len() != 1 {
@@ -34,12 +34,12 @@ func Test_priorityQueue_Len(t *testing.T) {
 	buf2 := &eventBuffer{
 		list.New(),
 		100,
-		now_ms,
+		nowMs,
 	}
 	expiringBuf2 := &expiringBuffer{
-		eventBuffer_ptr: buf2,
-		category:        "some different category",
-		priority:        now_ms,
+		eventBufferPtr: buf2,
+		category:       "some different category",
+		priority:       nowMs,
 	}
 	heap.Push(&pq, expiringBuf2)
 	if pq.Len() != 2 {
@@ -59,31 +59,32 @@ func Test_priorityQueue_Len(t *testing.T) {
 	}
 }
 
+//gocyclo:ignore
 func Test_priorityQueue(t *testing.T) {
-	now_ms := timeToEpochMilliseconds(time.Now())
+	nowMs := timeToEpochMilliseconds(time.Now())
 	pq := make(priorityQueue, 0)
 	heap.Init(&pq)
 
-	if _, e := pq.peakTopPriority(); e == nil {
-		t.Errorf("No error returned when calling peakTopPriority on an empty priorityQueue")
+	if _, e := pq.peekTopPriority(); e == nil {
+		t.Errorf("No error returned when calling peekTopPriority on an empty priorityQueue")
 	}
 
 	buf1 := &eventBuffer{
 		list.New(),
 		100,
-		now_ms,
+		nowMs,
 	}
 	expiringBuf1 := &expiringBuffer{
-		eventBuffer_ptr: buf1,
-		category:        "some random category",
-		priority:        10003, // lower number is a higher ( priority 1 > priority 2)
+		eventBufferPtr: buf1,
+		category:       "some random category",
+		priority:       10003, // lower number is a higher ( priority 1 > priority 2)
 	}
 	heap.Push(&pq, expiringBuf1)
-	if p, e := pq.peakTopPriority(); e != nil {
-		t.Errorf("Error returned when calling peakTopPriority: %v", e)
+	if p, e := pq.peekTopPriority(); e != nil {
+		t.Errorf("Error returned when calling peekTopPriority: %v", e)
 	} else {
 		if p != 10003 {
-			t.Errorf("Unexpected peakTopPriority result.  was: %d, expected: %d.",
+			t.Errorf("Unexpected peekTopPriority result.  was: %d, expected: %d.",
 				10003, p)
 		}
 	}
@@ -91,19 +92,19 @@ func Test_priorityQueue(t *testing.T) {
 	buf2 := &eventBuffer{
 		list.New(),
 		100,
-		now_ms,
+		nowMs,
 	}
 	expiringBuf2 := &expiringBuffer{
-		eventBuffer_ptr: buf2,
-		category:        "some random category",
-		priority:        10001,
+		eventBufferPtr: buf2,
+		category:       "some random category",
+		priority:       10001,
 	}
 	heap.Push(&pq, expiringBuf2)
-	if p, e := pq.peakTopPriority(); e != nil {
-		t.Errorf("Error returned when calling peakTopPriority: %v", e)
+	if p, e := pq.peekTopPriority(); e != nil {
+		t.Errorf("Error returned when calling peekTopPriority: %v", e)
 	} else {
 		if p != 10001 {
-			t.Errorf("Unexpected peakTopPriority result.  was: %d, expected: %d.",
+			t.Errorf("Unexpected peekTopPriority result.  was: %d, expected: %d.",
 				10001, p)
 		}
 	}
@@ -111,19 +112,19 @@ func Test_priorityQueue(t *testing.T) {
 	buf3 := &eventBuffer{
 		list.New(),
 		100,
-		now_ms,
+		nowMs,
 	}
 	expiringBuf3 := &expiringBuffer{
-		eventBuffer_ptr: buf3,
-		category:        "some random category",
-		priority:        10051,
+		eventBufferPtr: buf3,
+		category:       "some random category",
+		priority:       10051,
 	}
 	heap.Push(&pq, expiringBuf3)
-	if p, e := pq.peakTopPriority(); e != nil {
-		t.Errorf("Error returned when calling peakTopPriority: %v", e)
+	if p, e := pq.peekTopPriority(); e != nil {
+		t.Errorf("Error returned when calling peekTopPriority: %v", e)
 	} else {
 		if p != 10001 {
-			t.Errorf("Unexpected peakTopPriority result.  was: %d, expected: %d.",
+			t.Errorf("Unexpected peekTopPriority result.  was: %d, expected: %d.",
 				10001, p)
 		}
 	}
@@ -131,19 +132,19 @@ func Test_priorityQueue(t *testing.T) {
 	buf4 := &eventBuffer{
 		list.New(),
 		100,
-		now_ms,
+		nowMs,
 	}
 	expiringBuf4 := &expiringBuffer{
-		eventBuffer_ptr: buf4,
-		category:        "some random category",
-		priority:        10011,
+		eventBufferPtr: buf4,
+		category:       "some random category",
+		priority:       10011,
 	}
 	heap.Push(&pq, expiringBuf4)
-	if p, e := pq.peakTopPriority(); e != nil {
-		t.Errorf("Error returned when calling peakTopPriority: %v", e)
+	if p, e := pq.peekTopPriority(); e != nil {
+		t.Errorf("Error returned when calling peekTopPriority: %v", e)
 	} else {
 		if p != 10001 {
-			t.Errorf("Unexpected peakTopPriority result.  was: %d, expected: %d.",
+			t.Errorf("Unexpected peekTopPriority result.  was: %d, expected: %d.",
 				10001, p)
 		}
 	}
@@ -151,38 +152,38 @@ func Test_priorityQueue(t *testing.T) {
 	if item := heap.Pop(&pq).(*expiringBuffer); item != expiringBuf2 {
 		t.Errorf("Expected popped item != expiringBuf2")
 	}
-	if p, _ := pq.peakTopPriority(); p != 10003 {
-		t.Errorf("Unexpected peakTopPriority result.  was: %d, expected: %d.",
+	if p, _ := pq.peekTopPriority(); p != 10003 {
+		t.Errorf("Unexpected peekTopPriority result.  was: %d, expected: %d.",
 			10003, p)
 	}
 
 	if item := heap.Pop(&pq).(*expiringBuffer); item != expiringBuf1 {
 		t.Errorf("Expected popped item != expiringBuf1")
 	}
-	if p, _ := pq.peakTopPriority(); p != 10011 {
-		t.Errorf("Unexpected peakTopPriority result.  was: %d, expected: %d.",
+	if p, _ := pq.peekTopPriority(); p != 10011 {
+		t.Errorf("Unexpected peekTopPriority result.  was: %d, expected: %d.",
 			10011, p)
 	}
 
 	// Now stir the pot by updating expiringBuf3 to higher priority than expiringBuf4
 	pq.updatePriority(expiringBuf3, 10008)
-	if p, _ := pq.peakTopPriority(); p != 10008 {
-		t.Errorf("Unexpected peakTopPriority result.  was: %d, expected: %d.",
+	if p, _ := pq.peekTopPriority(); p != 10008 {
+		t.Errorf("Unexpected peekTopPriority result.  was: %d, expected: %d.",
 			10008, p)
 	}
 
 	if item := heap.Pop(&pq).(*expiringBuffer); item != expiringBuf3 {
 		t.Errorf("Expected popped item != expiringBuf3")
 	}
-	if p, _ := pq.peakTopPriority(); p != 10011 {
-		t.Errorf("Unexpected peakTopPriority result.  was: %d, expected: %d.",
+	if p, _ := pq.peekTopPriority(); p != 10011 {
+		t.Errorf("Unexpected peekTopPriority result.  was: %d, expected: %d.",
 			10011, p)
 	}
 	if item := heap.Pop(&pq).(*expiringBuffer); item != expiringBuf4 {
 		t.Errorf("Expected popped item != expiringBuf4")
 	}
 
-	if _, e := pq.peakTopPriority(); e == nil {
-		t.Errorf("No error returned when calling peakTopPriority on an empty priorityQueue")
+	if _, e := pq.peekTopPriority(); e == nil {
+		t.Errorf("No error returned when calling peekTopPriority on an empty priorityQueue")
 	}
 }
