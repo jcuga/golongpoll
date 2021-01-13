@@ -1,9 +1,9 @@
 language: go
 go:
  - 1.4.2
- - 1.5.4
- - 1.6.3
  - 1.7
+ - 1.11
+ - 1.15
  - tip
 
 script:
@@ -11,8 +11,10 @@ script:
 
 before_install:
   - go get golang.org/x/tools/cmd/cover
-  - go get github.com/mattn/goveralls
 
 script:
-  - go test -v -covermode=count -coverprofile=coverage.out github.com/jcuga/golongpoll
-  - goveralls -coverprofile=coverage.out -service travis-ci -repotoken $COVERALLS_TOKEN
+  - go test -v -coverprofile=coverage.txt -covermode=count github.com/jcuga/golongpoll
+  - go test -v github.com/jcuga/golongpoll/go-client/glpclient
+
+after_success:
+  - bash <(curl -s https://codecov.io/bash)

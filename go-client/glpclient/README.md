@@ -11,7 +11,6 @@ import (
   "fmt" 
 
   "github.com/jcuga/golongpoll/go-client"
-  "github.com/davecgh/go-spew/spew"
 )
 
 u, _ := url.Parse("http://127.0.0.1/events")

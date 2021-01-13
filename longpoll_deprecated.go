@@ -4,7 +4,7 @@ import (
 	"log"
 )
 
-// DEPRECATED.  Use StartLongpoll or StartLongpoll instead.
+// CreateManager is DEPRECATED.  Use StartLongpoll or StartLongpoll instead.
 func CreateManager() (*LongpollManager, error) {
 	log.Printf("WARNING: the function golongpoll.CreateManager is deprectated and should no longer be used.\n")
 	return StartLongpoll(Options{
@@ -18,7 +18,7 @@ func CreateManager() (*LongpollManager, error) {
 	})
 }
 
-// DEPRECATED.  Use StartLongpoll or StartLongpoll instead.
+// CreateCustomManager is DEPRECATED.  Use StartLongpoll or StartLongpoll instead.
 func CreateCustomManager(maxTimeoutSeconds, eventBufferSize int,
 	loggingEnabled bool) (*LongpollManager, error) {
 	log.Printf("WARNING: the function golongpoll.CreateCustomManager is deprectated and should no longer be used.\n")

@@ -12,16 +12,19 @@ import (
 )
 
 const (
-	DEFAULT_TIMEOUT   = 30
+	// DEFAULT_TIMEOUT is the default timeout in seconds (30) used when calling the longpoll server.
+	DEFAULT_TIMEOUT = 30
+	// DEFAULT_REATTEMPT is the default amount of time in seconds (30) the client waits to reconnect to the server after a failure.
 	DEFAULT_REATTEMPT = 30
 )
 
+// PollResponse contains any events and the most recent event timestamp.
 type PollResponse struct {
 	Events    []PollEvent `json:"events"`
 	Timestamp int64       `json:"timestamp"`
 }
 
-// Taken from https://github.com/jcuga/golongpoll/blob/master/events.go
+// PollEvent is taken from https://github.com/jcuga/golongpoll/blob/master/events.go
 type PollEvent struct {
 	// Timestamp is milliseconds since epoch to match javascrits Date.getTime()
 	Timestamp int64  `json:"timestamp"`
@@ -30,6 +33,7 @@ type PollEvent struct {
 	Data json.RawMessage `json:"data"`
 }
 
+// Client will connect to a given URL and send received events into a channel.
 type Client struct {
 	url      *url.URL
 	category string
@@ -52,7 +56,7 @@ type Client struct {
 	LoggingEnabled bool
 }
 
-// Instantiate a new client to connect to a given URL and send the events into a channel
+// NewClient instantiate a new client to connect to a given URL and send the events into a channel
 // The URL shouldn't contain any GET parameters although its fine if it contains some but category, since_time and timeout will be overriten
 // stubChanData must either be an empty structure of the events data or a map[string]interface{} if the events do not follow a specific structure
 func NewClient(url *url.URL, category string) *Client {
@@ -119,6 +123,7 @@ func (c *Client) Start() {
 	}(currentRunID, u)
 }
 
+// Stop causes the client's goroutine to stop listening for events and exit.
 func (c *Client) Stop() {
 	// Changing the runID will have any previous goroutine ignore any events it may receive
 	atomic.AddUint64(&(c.runID), 1)
@@ -160,7 +165,7 @@ func (c Client) fetchEvents(since int64) (PollResponse, error) {
 	err = decoder.Decode(&pr)
 	if err != nil {
 		if c.LoggingEnabled {
-			log.Println("Error while decoding poll response: %s", err)
+			log.Println("Error while decoding poll response: ", err)
 		}
 		return PollResponse{}, err
 	}
