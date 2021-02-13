@@ -12,7 +12,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/nu7hatch/gouuid"
+	"github.com/gofrs/uuid"
 )
 
 const (
@@ -202,7 +202,7 @@ func newclientSubscription(subscriptionCategory string, lastEventTime time.Time)
 		return nil, err
 	}
 	subscription := clientSubscription{
-		clientCategoryPair{*u, subscriptionCategory},
+		clientCategoryPair{u, subscriptionCategory},
 		lastEventTime,
 		make(chan []lpEvent, 1),
 	}
