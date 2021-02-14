@@ -85,7 +85,9 @@ func Test_LongpollManager_CreateCustomManager_InvalidArgs(t *testing.T) {
 
 //gocyclo:ignore
 func Test_LongpollManager_Publish(t *testing.T) {
-	manager, err := CreateManager()
+	manager, err := StartLongpoll(Options{
+		LoggingEnabled: true,
+	})
 	// Confirm the create call worked, and our manager has the expected values
 	if err != nil {
 		t.Errorf("Failed to create default LongpollManager.  Error was: %q", err)
@@ -186,7 +188,11 @@ func Test_LongpollManager_Publish(t *testing.T) {
 
 //gocyclo:ignore
 func Test_LongpollManager_Publish_MaxBufferSize(t *testing.T) {
-	manager, _ := CreateCustomManager(120, 2, true) // max buffer size 3
+	manager, _ := StartLongpoll(Options{
+		LoggingEnabled:     true,
+		MaxEventBufferSize: 2,
+	})
+
 	if len(manager.subManager.SubEventBuffer) != 0 {
 		t.Errorf("Expected sub manager's event map to be initially empty. Instead len: %d",
 			len(manager.subManager.SubEventBuffer))
@@ -282,7 +288,9 @@ func Test_LongpollManager_Publish_MaxBufferSize(t *testing.T) {
 }
 
 func Test_LongpollManager_Publish_InvalidArgs(t *testing.T) {
-	manager, err := CreateManager()
+	manager, err := StartLongpoll(Options{
+		LoggingEnabled: true,
+	})
 	// Confirm the create call worked, and our manager has the expected values
 	if err != nil {
 		t.Errorf("Failed to create default LongpollManager.  Error was: %q", err)
@@ -311,7 +319,9 @@ func Test_LongpollManager_Publish_InvalidArgs(t *testing.T) {
 }
 
 func Test_LongpollManager_Shutdown(t *testing.T) {
-	manager, err := CreateManager()
+	manager, err := StartLongpoll(Options{
+		LoggingEnabled: true,
+	})
 	if err != nil {
 		t.Errorf("Failed to create default LongpollManager.  Error was: %q", err)
 	}
@@ -354,7 +364,10 @@ func ajaxHandler(handlerFunc func(w http.ResponseWriter, r *http.Request)) http.
 
 //gocyclo:ignore
 func Test_LongpollManager_WebClient_InvalidRequests(t *testing.T) {
-	manager, _ := CreateCustomManager(120, 100, true)
+	manager, _ := StartLongpoll(Options{
+		LoggingEnabled:     true,
+		MaxEventBufferSize: 100,
+	})
 	subscriptionHandler := ajaxHandler(manager.SubscriptionHandler)
 
 	// Empty request, this is going to result in an JSON error object:
@@ -456,7 +469,10 @@ func Test_LongpollManager_WebClient_InvalidRequests(t *testing.T) {
 }
 
 func Test_LongpollManager_WebClient_NoEventsSoTimeout(t *testing.T) {
-	manager, _ := CreateCustomManager(120, 100, true)
+	manager, _ := StartLongpoll(Options{
+		LoggingEnabled:     true,
+		MaxEventBufferSize: 100,
+	})
 	subscriptionHandler := ajaxHandler(manager.SubscriptionHandler)
 
 	// Valid request, but we don't have any events published,
@@ -487,7 +503,10 @@ func Test_LongpollManager_WebClient_NoEventsSoTimeout(t *testing.T) {
 }
 
 func Test_LongpollManager_WebClient_Disconnect_RemoveClientSub(t *testing.T) {
-	manager, _ := CreateCustomManager(120, 100, true)
+	manager, _ := StartLongpoll(Options{
+		LoggingEnabled:     true,
+		MaxEventBufferSize: 100,
+	})
 	subscriptionHandler := ajaxHandler(manager.SubscriptionHandler)
 	if _, found := manager.subManager.ClientSubChannels["veggies"]; found {
 		t.Errorf("Expected client sub channel not to exist yet ")
@@ -544,7 +563,10 @@ func Test_LongpollManager_WebClient_Disconnect_RemoveClientSub(t *testing.T) {
 }
 
 func Test_LongpollManager_WebClient_Disconnect_TerminateHttp(t *testing.T) {
-	manager, _ := CreateCustomManager(120, 100, true)
+	manager, _ := StartLongpoll(Options{
+		LoggingEnabled:     true,
+		MaxEventBufferSize: 100,
+	})
 	testChannel := make(chan int, 2)
 	webValue := 7
 	goroutineValue := 13
@@ -600,7 +622,10 @@ func Test_LongpollManager_WebClient_Disconnect_TerminateHttp(t *testing.T) {
 
 //gocyclo:ignore
 func Test_LongpollManager_WebClient_HasEvents(t *testing.T) {
-	manager, _ := CreateCustomManager(120, 100, true)
+	manager, _ := StartLongpoll(Options{
+		LoggingEnabled:     true,
+		MaxEventBufferSize: 100,
+	})
 	subscriptionHandler := ajaxHandler(manager.SubscriptionHandler)
 
 	// Valid request, but we don't have any events published,
@@ -740,7 +765,11 @@ func Test_LongpollManager_WebClient_HasBufferedEvents(t *testing.T) {
 	// subscriptionManager's eventBuffer containers.
 	// Of course, clients only see this if they request events with a
 	// 'since_time' argument of a time earlier than the events occurred.
-	manager, _ := CreateCustomManager(120, 100, true)
+	manager, _ := StartLongpoll(Options{
+		LoggingEnabled:     true,
+		MaxEventBufferSize: 100,
+	})
+
 	subscriptionHandler := ajaxHandler(manager.SubscriptionHandler)
 
 	startTime := time.Now()
@@ -1547,4 +1576,91 @@ func Test_LongpollManager_PurgingOldCategories_Inactivity(t *testing.T) {
 	if sm.bufferPriorityQueue.Len() != 0 {
 		t.Errorf("Unexpected heap size.  was: %d, expected: %d", sm.bufferPriorityQueue.Len(), 0)
 	}
+}
+
+//gocyclo:ignore
+// Tests the bug from issue #19 where clients see only the first of multiple events
+// published within the same millisecond.
+func Test_MultipleConsecutivePublishedEvents(t *testing.T) {
+	manager, _ := StartLongpoll(Options{
+		LoggingEnabled: true,
+	})
+
+	subscriptionHandler := ajaxHandler(manager.SubscriptionHandler)
+
+	// Valid request, but we don't have any events published,
+	// so this will wait for a publish or timeout (in this case we'll get
+	// something)
+	req, _ := http.NewRequest("GET", "?timeout=30&category=beer", nil)
+	w := NewCloseNotifierRecorder()
+
+	// Publish 3 events for our subscribed category all at once.
+	// Note how these events occur after the client subscribed.
+	// The old, buggy behavior was that the first published event would trigger
+	// an immediate resposne to the client and then when the client
+	// polled again for more events using the updated since_time param, the
+	// other published events having the same timestamp as the first would be
+	// skipped entirely.
+	// Also publish a 4th event after a delay and make sure we can get that in our
+	// second request using the since_time from the first 3 events.
+	go func() {
+		time.Sleep(1500 * time.Millisecond)
+		manager.Publish("beer", "High Life")
+		manager.Publish("beer", "Lionshead")
+		manager.Publish("beer", "Miller Genuine Draft")
+		time.Sleep(1500 * time.Millisecond)
+		manager.Publish("beer", "Yuengling")
+	}()
+	subscriptionHandler.ServeHTTP(w, req)
+
+	// Confirm we got all 3 events
+	if w.Code != http.StatusOK {
+		t.Errorf("SubscriptionHandler didn't return %v", http.StatusOK)
+	}
+	var eventResponse eventResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &eventResponse); err != nil {
+		t.Errorf("Failed to decode json: %q", err)
+	}
+	if len(*eventResponse.Events) != 3 {
+		t.Fatalf("Unexpected number of events.  Expected: %d, got: %d", 3, len(*eventResponse.Events))
+	}
+	if (*eventResponse.Events)[0].Category != "beer" {
+		t.Errorf("Unexpected category.  Expected: %q, got: %q", "beer", (*eventResponse.Events)[0].Category)
+	}
+	if (*eventResponse.Events)[0].Data != "High Life" {
+		t.Errorf("Unexpected data.  Expected: %q, got: %q", "High Life", (*eventResponse.Events)[0].Data)
+	}
+	if (*eventResponse.Events)[1].Category != "beer" {
+		t.Errorf("Unexpected category.  Expected: %q, got: %q", "beer", (*eventResponse.Events)[0].Category)
+	}
+	if (*eventResponse.Events)[1].Data != "Lionshead" {
+		t.Errorf("Unexpected data.  Expected: %q, got: %q", "Lionshead", (*eventResponse.Events)[0].Data)
+	}
+	if (*eventResponse.Events)[2].Category != "beer" {
+		t.Errorf("Unexpected category.  Expected: %q, got: %q", "beer", (*eventResponse.Events)[0].Category)
+	}
+	if (*eventResponse.Events)[2].Data != "Miller Genuine Draft" {
+		t.Errorf("Unexpected data.  Expected: %q, got: %q", "Miller Genuine Draft", (*eventResponse.Events)[0].Data)
+	}
+
+	// Confirm the times are all the same.  Technically this could occasionally fail but in practice the timestamps
+	// should all match/fall within the same millisecond.
+	firstEventTime := (*eventResponse.Events)[0].Timestamp
+	secondEventTime := (*eventResponse.Events)[0].Timestamp
+	thirdEventTime := (*eventResponse.Events)[0].Timestamp
+
+	if secondEventTime != firstEventTime {
+		t.Errorf("Unexpected event.Timestamp, expected: %q, got: %q", firstEventTime, secondEventTime)
+	}
+
+	if thirdEventTime != firstEventTime {
+		t.Errorf("Unexpected event.Timestamp, expected: %q, got: %q", firstEventTime, secondEventTime)
+	}
+
+	// TODO: once above passes, make another request with since time set to event's time and confirm get next event.
+	// TODO; then get next-since time and confirm no events
+	// TODO: then query all without time and confirm get all 4
+
+	// Don't forget to kill our pubsub manager's run goroutine
+	manager.Shutdown()
 }
