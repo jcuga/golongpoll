@@ -64,7 +64,13 @@ func (m *LongpollManager) Publish(category string, data interface{}) error {
 	if len(category) > 1024 {
 		return errors.New("category cannot be longer than 1024")
 	}
-	m.eventsIn <- lpEvent{timeToEpochMilliseconds(time.Now()), category, data}
+
+	u, err := uuid.NewV4()
+	if err != nil {
+		return err
+	}
+
+	m.eventsIn <- lpEvent{timeToEpochMilliseconds(time.Now()), category, data, u}
 	return nil
 }
 
@@ -188,15 +194,17 @@ func StartLongpoll(opts Options) (*LongpollManager, error) {
 
 type clientSubscription struct {
 	clientCategoryPair
-	// used to ensure no events skipped between long polls:
+	// Used to limit events to after a specific time
 	LastEventTime time.Time
+	// Used in conjunction with LastEventTime to ensue no events are skipped
+	LastEventID *uuid.UUID
 	// we channel arrays of events since we need to send everything a client
 	// cares about in a single channel send.  This makes channel receives a
 	// one shot deal.
 	Events chan []lpEvent
 }
 
-func newclientSubscription(subscriptionCategory string, lastEventTime time.Time) (*clientSubscription, error) {
+func newclientSubscription(subscriptionCategory string, lastEventTime time.Time, lastEventID *uuid.UUID) (*clientSubscription, error) {
 	u, err := uuid.NewV4()
 	if err != nil {
 		return nil, err
@@ -204,6 +212,7 @@ func newclientSubscription(subscriptionCategory string, lastEventTime time.Time)
 	subscription := clientSubscription{
 		clientCategoryPair{u, subscriptionCategory},
 		lastEventTime,
+		lastEventID,
 		make(chan []lpEvent, 1),
 	}
 	return &subscription, nil
@@ -257,7 +266,37 @@ func getLongPollSubscriptionHandler(maxTimeoutSeconds int, subscriptionRequests 
 				return
 			}
 		}
-		subscription, err := newclientSubscription(category, lastEventTime)
+
+		var lastEventID *uuid.UUID
+
+		lastIdParam := r.URL.Query().Get("last_id")
+
+		if len(lastIdParam) > 0 {
+			// further restricting since_time to additionally get events since given last even ID.
+			// this handles scenario where multiple events have the same timestamp and we don't
+			// want to miss the other events with the same timestamp (issue #19).
+			if len(lastEventTimeParam) == 0 {
+				if loggingEnabled {
+					log.Printf("Invalid request: last_id without since_time.\n")
+				}
+				io.WriteString(w, "{\"error\": \"Must provide since_time arg when providing last_id.\"}")
+				return
+			}
+
+			lastEventIDVal, uuidErr := uuid.FromString(lastIdParam)
+
+			if uuidErr != nil {
+				if loggingEnabled {
+					log.Printf("Invalid request: last_id was not a valid UUID.\n")
+				}
+				io.WriteString(w, "{\"error\": \"Param last_id was not a valid UUID.\"}")
+				return
+			}
+
+			lastEventID = &lastEventIDVal
+		}
+
+		subscription, err := newclientSubscription(category, lastEventTime, lastEventID)
 		if err != nil {
 			if loggingEnabled {
 				log.Printf("Error creating new Subscription: %s.\n", err)
@@ -400,7 +439,7 @@ func (sm *subscriptionManager) handleNewClient(newClient *clientSubscription) er
 		sm.checkExpiredEvents(expiringBuf)
 		// We have a buffer for this sub category, check for buffered events
 		if events, err := expiringBuf.eventBufferPtr.GetEventsSince(newClient.LastEventTime,
-			sm.DeleteEventAfterFirstRetrieval); err == nil && len(events) > 0 {
+			sm.DeleteEventAfterFirstRetrieval, newClient.LastEventID); err == nil && len(events) > 0 {
 			doQueueRequest = false
 			if sm.LoggingEnabled {
 				log.Printf("SubscriptionManager: Skip adding client, sending %d events. (Category: %q Client: %s)\n",

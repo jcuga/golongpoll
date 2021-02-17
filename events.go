@@ -4,7 +4,10 @@ import (
 	"container/list"
 	"errors"
 	"fmt"
+	"log"
 	"time"
+
+	"github.com/gofrs/uuid"
 )
 
 // lpEvent is a longpoll event.  This type has a Timestamp as milliseconds since
@@ -18,6 +21,9 @@ type lpEvent struct {
 	Category  string `json:"category"`
 	// NOTE: Data can be anything that is able to passed to json.Marshal()
 	Data interface{} `json:"data"`
+	// Event ID, used in conjunction with Timestamp to get a complete timeline
+	// of event data as there could be more than one event with the same timestamp.
+	ID uuid.UUID `json:"id"`
 }
 
 // eventResponse is the json response that carries longpoll events.
@@ -43,6 +49,20 @@ type eventBuffer struct {
 	// time in milliseconds since epoch since thats what lpEvent types use
 	// for Timestamps
 	oldestEventTime int64
+}
+
+func newEvent(category string, data interface{}) lpEvent {
+	return newEventWithTime(time.Now(), category, data)
+}
+
+func newEventWithTime(t time.Time, category string, data interface{}) lpEvent {
+	u, err := uuid.NewV4()
+
+	if err != nil {
+		log.Fatalf("Error generating uuid: %q", err)
+	}
+
+	return lpEvent{timeToEpochMilliseconds(t), category, data, u}
 }
 
 // QueueEvent adds a new longpoll Event to the front of our buffer and removes
@@ -79,7 +99,7 @@ func (eb *eventBuffer) QueueEvent(event *lpEvent) error {
 // Optionally removes returned events from the eventBuffer if told to do so by
 // deleteFetchedEvents argument.
 func (eb *eventBuffer) GetEventsSince(since time.Time,
-	deleteFetchedEvents bool) ([]lpEvent, error) {
+	deleteFetchedEvents bool, lastEventUUID *uuid.UUID) ([]lpEvent, error) {
 	events := make([]lpEvent, 0)
 	// NOTE: events are bufferd with the most recent event at the front.
 	// So we want to start our search at the front of the buffer and stop
@@ -98,7 +118,12 @@ func (eb *eventBuffer) GetEventsSince(since time.Time,
 			return events, fmt.Errorf("Found non-event type in event buffer.")
 		}
 		// is event time after 'since' time arg? convert 'since' to epoch ms
-		if event.Timestamp > timeToEpochMilliseconds(since) {
+		sinceTime := timeToEpochMilliseconds(since)
+		if event.Timestamp > sinceTime {
+			lastGoodItem = element
+		} else if event.Timestamp == sinceTime && lastEventUUID != nil && *lastEventUUID != event.ID {
+			// Event time is same as last seen event time, but ID is different, so this is more recent
+			// than last seen event since we see events most-recent-first
 			lastGoodItem = element
 		} else {
 			// we've reached items that are too old, they occurred before or on
@@ -119,7 +144,7 @@ func (eb *eventBuffer) GetEventsSince(since time.Time,
 			}
 			// we already know this event is after 'since'
 			events = append(events,
-				lpEvent{event.Timestamp, event.Category, event.Data})
+				lpEvent{event.Timestamp, event.Category, event.Data, event.ID})
 			// Advance iteration before List.Remove() invalidates element.prev
 			prev = element.Prev()
 			// Now safely remove from list if told to do so:

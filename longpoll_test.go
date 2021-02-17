@@ -8,78 +8,30 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/gofrs/uuid"
 )
 
-func Test_LongpollManager_CreateManager(t *testing.T) {
-	manager, err := CreateManager()
-	// Confirm the create call worked, and our manager has the expected values
-	if err != nil {
-		t.Errorf("Failed to create default LongpollManager.  Error was: %q", err)
-	}
-	// Channel size defaults to 100
-	if cap(manager.eventsIn) != 100 {
-		t.Errorf("Unexpected event channel capacity.  Expected: %d, got: %d",
-			100, cap(manager.eventsIn))
-	}
-	if cap(manager.subManager.clientSubscriptions) != 100 {
-		t.Errorf("Unexpected client subscription channel capacity.  Expected: %d, got: %d",
-			100, cap(manager.subManager.clientSubscriptions))
-	}
-	if cap(manager.subManager.ClientTimeouts) != 100 {
-		t.Errorf("Unexpected client timeout channel capacity.  Expected: %d, got: %d",
-			100, cap(manager.subManager.ClientTimeouts))
-	}
-	// Max event buffer size defaults to 250
-	if manager.subManager.MaxEventBufferSize != 250 {
-		t.Errorf("Unexpected client timeout channel capacity.  Expected: %d, got: %d",
-			250, manager.subManager.MaxEventBufferSize)
-	}
-	// Don't forget to kill subscription manager's running goroutine
-	manager.Shutdown()
+type CloseNotifierRecorder struct {
+	httptest.ResponseRecorder
+	CloseNotifier chan bool
 }
 
-func Test_LongpollManager_CreateCustomManager(t *testing.T) {
-	manager, err := CreateCustomManager(360, 700, true)
-	// Confirm the create call worked, and our manager has the expected values
-	if err != nil {
-		t.Errorf("Failed to create default LongpollManager.  Error was: %q", err)
-	}
-	// Channel size defaults to 100
-	if cap(manager.eventsIn) != 100 {
-		t.Errorf("Unexpected event channel capacity.  Expected: %d, got: %d",
-			100, cap(manager.eventsIn))
-	}
-	if cap(manager.subManager.clientSubscriptions) != 100 {
-		t.Errorf("Unexpected client subscription channel capacity.  Expected: %d, got: %d",
-			100, cap(manager.subManager.clientSubscriptions))
-	}
-	if cap(manager.subManager.ClientTimeouts) != 100 {
-		t.Errorf("Unexpected client timeout channel capacity.  Expected: %d, got: %d",
-			100, cap(manager.subManager.ClientTimeouts))
-	}
-	// Max event buffer size set  to 700
-	if manager.subManager.MaxEventBufferSize != 700 {
-		t.Errorf("Unexpected client timeout channel capacity.  Expected: %d, got: %d",
-			700, manager.subManager.MaxEventBufferSize)
-	}
-	// Don't forget to kill subscription manager's running goroutine
-	manager.Shutdown()
+// As it turns out, httptest.ResponseRecorder (returned by httptest.NewRecorder)
+// does not support CloseNotify, so mock it to avoid panics about not supporting
+// the interface
+func (cnr *CloseNotifierRecorder) CloseNotify() <-chan bool {
+	return cnr.CloseNotifier
 }
 
-func Test_LongpollManager_CreateCustomManager_InvalidArgs(t *testing.T) {
-	manager, err := CreateCustomManager(360, -1, false) // buffer size == -1
-	if err == nil {
-		t.Errorf("Expected error when creating custom manager with invalid event buffer size ")
-	}
-	if manager != nil {
-		t.Errorf("Expected nil response for manager when create call returned error.")
-	}
-	manager, err = CreateCustomManager(-1, 200, false) // timeout == -1
-	if err == nil {
-		t.Errorf("Expected error when creating custom manager with invalid timeout.")
-	}
-	if manager != nil {
-		t.Errorf("Expected nil response for manager when create call returned error.")
+func NewCloseNotifierRecorder() *CloseNotifierRecorder {
+	return &CloseNotifierRecorder{
+		httptest.ResponseRecorder{
+			HeaderMap: make(http.Header),
+			Body:      new(bytes.Buffer),
+			Code:      200,
+		},
+		make(chan bool, 1),
 	}
 }
 
@@ -340,7 +292,7 @@ func Test_LongpollManager_Shutdown(t *testing.T) {
 
 func Test_LongpollManager_newclientSubscription(t *testing.T) {
 	subTime := time.Date(2015, 11, 7, 11, 33, 4, 0, time.UTC)
-	sub, err := newclientSubscription("colors", subTime)
+	sub, err := newclientSubscription("colors", subTime, nil)
 	if err != nil {
 		t.Errorf("Unexpected error when creating new client subscription: %q", err)
 	}
@@ -355,6 +307,21 @@ func Test_LongpollManager_newclientSubscription(t *testing.T) {
 	if cap(sub.Events) != 1 {
 		t.Errorf("Unexpected event channel capacity. expected: %q. got: %q", 1,
 			cap(sub.Events))
+	}
+
+	u, _ := uuid.NewV4()
+	sub, err = newclientSubscription("news", subTime, &u)
+
+	if err != nil {
+		t.Errorf("Unexpected error when creating new client subscription: %q", err)
+	}
+	if sub.clientCategoryPair.SubscriptionCategory != "news" {
+		t.Errorf("Unexpected sub category, expected: %q. got: %q", "news",
+			sub.clientCategoryPair.SubscriptionCategory)
+	}
+	if sub.LastEventID != &u {
+		t.Errorf("Unexpected sub last event time, expected: %q. got: %q", u,
+			sub.LastEventID)
 	}
 }
 
@@ -1580,7 +1547,8 @@ func Test_LongpollManager_PurgingOldCategories_Inactivity(t *testing.T) {
 
 //gocyclo:ignore
 // Tests the bug from issue #19 where clients see only the first of multiple events
-// published within the same millisecond.
+// published within the same millisecond. The fix for this involves adding an event ID
+// field and including the last seen id in the request to use in addition to since_time.
 func Test_MultipleConsecutivePublishedEvents(t *testing.T) {
 	manager, _ := StartLongpoll(Options{
 		LoggingEnabled: true,
@@ -1600,9 +1568,9 @@ func Test_MultipleConsecutivePublishedEvents(t *testing.T) {
 	// an immediate resposne to the client and then when the client
 	// polled again for more events using the updated since_time param, the
 	// other published events having the same timestamp as the first would be
-	// skipped entirely.
-	// Also publish a 4th event after a delay and make sure we can get that in our
-	// second request using the since_time from the first 3 events.
+	// skipped entirely. Now, including the last_id in the request will
+	// allow clients to see events published at the same timestamp.
+	// Also publish a 4th event after a delay and make sure we can get that data too.
 	go func() {
 		time.Sleep(1500 * time.Millisecond)
 		manager.Publish("beer", "High Life")
@@ -1613,7 +1581,6 @@ func Test_MultipleConsecutivePublishedEvents(t *testing.T) {
 	}()
 	subscriptionHandler.ServeHTTP(w, req)
 
-	// Confirm we got all 3 events
 	if w.Code != http.StatusOK {
 		t.Errorf("SubscriptionHandler didn't return %v", http.StatusOK)
 	}
@@ -1621,45 +1588,85 @@ func Test_MultipleConsecutivePublishedEvents(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &eventResponse); err != nil {
 		t.Errorf("Failed to decode json: %q", err)
 	}
-	if len(*eventResponse.Events) != 3 {
-		t.Fatalf("Unexpected number of events.  Expected: %d, got: %d", 3, len(*eventResponse.Events))
-	}
-	if (*eventResponse.Events)[0].Category != "beer" {
-		t.Errorf("Unexpected category.  Expected: %q, got: %q", "beer", (*eventResponse.Events)[0].Category)
-	}
-	if (*eventResponse.Events)[0].Data != "High Life" {
-		t.Errorf("Unexpected data.  Expected: %q, got: %q", "High Life", (*eventResponse.Events)[0].Data)
-	}
-	if (*eventResponse.Events)[1].Category != "beer" {
-		t.Errorf("Unexpected category.  Expected: %q, got: %q", "beer", (*eventResponse.Events)[0].Category)
-	}
-	if (*eventResponse.Events)[1].Data != "Lionshead" {
-		t.Errorf("Unexpected data.  Expected: %q, got: %q", "Lionshead", (*eventResponse.Events)[0].Data)
-	}
-	if (*eventResponse.Events)[2].Category != "beer" {
-		t.Errorf("Unexpected category.  Expected: %q, got: %q", "beer", (*eventResponse.Events)[0].Category)
-	}
-	if (*eventResponse.Events)[2].Data != "Miller Genuine Draft" {
-		t.Errorf("Unexpected data.  Expected: %q, got: %q", "Miller Genuine Draft", (*eventResponse.Events)[0].Data)
+
+	if len(*eventResponse.Events) != 1 {
+		t.Errorf("Unexpected number of events.  Expected: %d, got: %d", 1, len(*eventResponse.Events))
 	}
 
-	// Confirm the times are all the same.  Technically this could occasionally fail but in practice the timestamps
-	// should all match/fall within the same millisecond.
-	firstEventTime := (*eventResponse.Events)[0].Timestamp
-	secondEventTime := (*eventResponse.Events)[0].Timestamp
-	thirdEventTime := (*eventResponse.Events)[0].Timestamp
-
-	if secondEventTime != firstEventTime {
-		t.Errorf("Unexpected event.Timestamp, expected: %q, got: %q", firstEventTime, secondEventTime)
+	firstEvent := (*eventResponse.Events)[0]
+	if firstEvent.Category != "beer" {
+		t.Errorf("Unexpected category.  Expected: %q, got: %q", "beer", firstEvent.Category)
+	}
+	if firstEvent.Data != "High Life" {
+		t.Errorf("Unexpected data.  Expected: %q, got: %q", "High Life", firstEvent.Data)
 	}
 
-	if thirdEventTime != firstEventTime {
-		t.Errorf("Unexpected event.Timestamp, expected: %q, got: %q", firstEventTime, secondEventTime)
+	if len(firstEvent.ID) == 0 {
+		t.Fatalf("Event ID was empty.")
 	}
 
-	// TODO: once above passes, make another request with since time set to event's time and confirm get next event.
-	// TODO; then get next-since time and confirm no events
-	// TODO: then query all without time and confirm get all 4
+	// Now ask for any events using since_time and last_id and confirm we get the other 2/3 events publisehd at the saem time
+	req, _ = http.NewRequest("GET", fmt.Sprintf("?timeout=2&category=beer&since_time=%d&last_id=%v", firstEvent.Timestamp, firstEvent.ID), nil)
+	w = NewCloseNotifierRecorder()
+	subscriptionHandler.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("SubscriptionHandler didn't return %v", http.StatusOK)
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &eventResponse); err != nil {
+		t.Errorf("Failed to decode json: %q", err)
+	}
+	if len(*eventResponse.Events) != 2 {
+		t.Fatalf("Unexpected number of events.  Expected: %d, got: %d", 2, len(*eventResponse.Events))
+	}
+
+	secondEvent := (*eventResponse.Events)[0]
+	thirdEvent := (*eventResponse.Events)[1]
+
+	if secondEvent.Category != "beer" {
+		t.Errorf("Unexpected category.  Expected: %q, got: %q", "beer", secondEvent.Category)
+	}
+	if secondEvent.Data != "Lionshead" {
+		t.Errorf("Unexpected data.  Expected: %q, got: %q", "Lionshead", secondEvent.Data)
+	}
+
+	if thirdEvent.Category != "beer" {
+		t.Errorf("Unexpected category.  Expected: %q, got: %q", "beer", thirdEvent.Category)
+	}
+	if thirdEvent.Data != "Miller Genuine Draft" {
+		t.Errorf("Unexpected data.  Expected: %q, got: %q", "Miller Genuine Draft", thirdEvent.Data)
+	}
+
+	if secondEvent.Timestamp != firstEvent.Timestamp {
+		t.Errorf("Expected timestamps to match. Expected: %q, Actual: %q", firstEvent.Timestamp, secondEvent.Timestamp)
+	}
+	if thirdEvent.Timestamp != firstEvent.Timestamp {
+		t.Errorf("Expected timestamps to match. Expected: %q, Actual: %q", firstEvent.Timestamp, thirdEvent.Timestamp)
+	}
+
+	// wait long enough for 4th event to occur and then confirm we get only that when calling with updated since_time and last_id
+	time.Sleep(1500 * time.Millisecond)
+
+	req, _ = http.NewRequest("GET", fmt.Sprintf("?timeout=2&category=beer&since_time=%d&last_id=%v", thirdEvent.Timestamp, thirdEvent.ID), nil)
+	w = NewCloseNotifierRecorder()
+	subscriptionHandler.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("SubscriptionHandler didn't return %v", http.StatusOK)
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &eventResponse); err != nil {
+		t.Errorf("Failed to decode json: %q", err)
+	}
+	if len(*eventResponse.Events) != 1 {
+		t.Fatalf("Unexpected number of events.  Expected: %d, got: %d", 1, len(*eventResponse.Events))
+	}
+
+	fourthEvent := (*eventResponse.Events)[0]
+
+	if fourthEvent.Category != "beer" {
+		t.Errorf("Unexpected category.  Expected: %q, got: %q", "beer", fourthEvent.Category)
+	}
+	if fourthEvent.Data != "Yuengling" {
+		t.Errorf("Unexpected data.  Expected: %q, got: %q", "Lionshead", fourthEvent.Data)
+	}
 
 	// Don't forget to kill our pubsub manager's run goroutine
 	manager.Shutdown()
