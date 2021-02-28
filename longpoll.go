@@ -48,10 +48,23 @@ const (
 // channels, you can simply create multiple LongpollManagers.
 type LongpollManager struct {
 	subManager          *subscriptionManager
-	eventsIn            chan<- lpEvent
+	eventsIn            chan<- Event
 	stopSignal          chan<- bool
 	SubscriptionHandler func(w http.ResponseWriter, r *http.Request)
 }
+
+// Interface providing library clients a way to do something with events created
+// from LongpollManager.Publish(). This can be useful for things like
+// logging or saving events in a database/storage.
+
+// AddOn provides a way to add behavior to longpolling.
+// For example: addons/persistence/file.go provides a way to
+// persist events to file to reuse across LongpollManager runs.
+type AddOn interface {
+	OnLongpollStart() <-chan Event
+	OnPublish(Event)
+	OnShutdown()
+} // TODO: ptu AddOn and Options in own .go files?
 
 // Publish an event for a given subscription category.  This event can have any
 // arbitrary data that is convert-able to JSON via the standard's json.Marshal()
@@ -70,7 +83,7 @@ func (m *LongpollManager) Publish(category string, data interface{}) error {
 		return err
 	}
 
-	m.eventsIn <- lpEvent{timeToEpochMilliseconds(time.Now()), category, data, u}
+	m.eventsIn <- Event{timeToEpochMilliseconds(time.Now()), category, data, u}
 	return nil
 }
 
@@ -119,6 +132,9 @@ type Options struct {
 	// event occurs.  This event gets sent to all listening clients and then
 	// the event skips being placed in a buffer and is gone forever.
 	DeleteEventAfterFirstRetrieval bool
+
+	// Optional add-on to add behavior like event persistence to longpolling.
+	AddOn AddOn
 }
 
 // StartLongpoll creates a LongpollManager, starts the internal pub-sub goroutine
@@ -152,14 +168,14 @@ func StartLongpoll(opts Options) (*LongpollManager, error) {
 	channelSize := 100
 	clientRequestChan := make(chan clientSubscription, channelSize)
 	clientTimeoutChan := make(chan clientCategoryPair, channelSize)
-	events := make(chan lpEvent, channelSize)
+	events := make(chan Event, channelSize)
 	// never has a send, only a close, so no larger capacity needed:
 	quit := make(chan bool, 1)
 	subManager := subscriptionManager{
 		clientSubscriptions:            clientRequestChan,
 		ClientTimeouts:                 clientTimeoutChan,
 		Events:                         events,
-		ClientSubChannels:              make(map[string]map[uuid.UUID]chan<- []lpEvent),
+		ClientSubChannels:              make(map[string]map[uuid.UUID]chan<- []Event),
 		SubEventBuffer:                 make(map[string]*expiringBuffer),
 		Quit:                           quit,
 		LoggingEnabled:                 opts.LoggingEnabled,
@@ -179,8 +195,27 @@ func StartLongpoll(opts Options) (*LongpollManager, error) {
 		// A priority queue (min heap) that keeps track of event buffers by their
 		// last event time.  Used to know when to delete inactive categories/buffers.
 		bufferPriorityQueue: make(priorityQueue, 0),
+		AddOn:               opts.AddOn,
 	}
 	heap.Init(&subManager.bufferPriorityQueue)
+
+	// Optionally prepopulate with data
+	if subManager.AddOn != nil {
+		startChan := subManager.AddOn.OnLongpollStart()
+		for {
+			event, ok := <-startChan
+			if ok {
+				// TODO: enforce any options TTL preemptively by not handling stale events? or is this onus on the add-on implementor?
+				subManager.handleNewEvent(&event)
+			} else {
+				// channel closed, we're done populating
+				break
+			}
+		}
+		// do any cleanup if options dictate it
+		subManager.purgeStaleCategories()
+	}
+
 	// Start subscription manager
 	go subManager.run()
 	LongpollManager := LongpollManager{
@@ -201,7 +236,7 @@ type clientSubscription struct {
 	// we channel arrays of events since we need to send everything a client
 	// cares about in a single channel send.  This makes channel receives a
 	// one shot deal.
-	Events chan []lpEvent
+	Events chan []Event
 }
 
 func newclientSubscription(subscriptionCategory string, lastEventTime time.Time, lastEventID *uuid.UUID) (*clientSubscription, error) {
@@ -213,7 +248,7 @@ func newclientSubscription(subscriptionCategory string, lastEventTime time.Time,
 		clientCategoryPair{u, subscriptionCategory},
 		lastEventTime,
 		lastEventID,
-		make(chan []lpEvent, 1),
+		make(chan []Event, 1), // TODO: Event or *Event here?
 	}
 	return &subscription, nil
 }
@@ -358,10 +393,10 @@ type clientCategoryPair struct {
 type subscriptionManager struct {
 	clientSubscriptions chan clientSubscription
 	ClientTimeouts      <-chan clientCategoryPair
-	Events              <-chan lpEvent
+	Events              <-chan Event
 	// Contains all client sub channels grouped first by sub id then by
 	// client uuid
-	ClientSubChannels map[string]map[uuid.UUID]chan<- []lpEvent
+	ClientSubChannels map[string]map[uuid.UUID]chan<- []Event
 	SubEventBuffer    map[string]*expiringBuffer
 	// channel to inform manager to stop running
 	Quit           <-chan bool
@@ -383,6 +418,8 @@ type subscriptionManager struct {
 	// PriorityQueue/heap that keeps event buffers in oldest-first order
 	// so we can easily delete eventBuffer/categories that have expired data
 	bufferPriorityQueue priorityQueue
+	// Optional add-on to add behavior like event persistence to longpolling.
+	AddOn AddOn
 }
 
 // This should be fired off in its own goroutine
@@ -405,6 +442,10 @@ func (sm *subscriptionManager) run() error {
 			sm.handleClientDisconnect(&disconnected)
 			sm.seeIfTimeToPurgeStaleCategories()
 		case event := <-sm.Events:
+			// Optional hook on publish
+			if sm.AddOn != nil {
+				sm.AddOn.OnPublish(event)
+			}
 			sm.handleNewEvent(&event)
 			sm.seeIfTimeToPurgeStaleCategories()
 		case <-time.After(time.Duration(5) * time.Second):
@@ -412,6 +453,10 @@ func (sm *subscriptionManager) run() error {
 		case _ = <-sm.Quit:
 			if sm.LoggingEnabled {
 				log.Println("SubscriptionManager: received quit signal, stopping.")
+			}
+			// optional shutdown callback
+			if sm.AddOn != nil {
+				sm.AddOn.OnShutdown()
 			}
 			// break out of our infinite loop/select
 			return nil
@@ -465,7 +510,7 @@ func (sm *subscriptionManager) handleNewClient(newClient *clientSubscription) er
 		categoryClients, found := sm.ClientSubChannels[newClient.SubscriptionCategory]
 		if !found {
 			// first request for this sub category, add client chan map entry
-			categoryClients = make(map[uuid.UUID]chan<- []lpEvent)
+			categoryClients = make(map[uuid.UUID]chan<- []Event)
 			sm.ClientSubChannels[newClient.SubscriptionCategory] = categoryClients
 		}
 		if sm.LoggingEnabled {
@@ -506,7 +551,7 @@ func (sm *subscriptionManager) handleClientDisconnect(disconnected *clientCatego
 	return funcErr
 }
 
-func (sm *subscriptionManager) handleNewEvent(newEvent *lpEvent) error {
+func (sm *subscriptionManager) handleNewEvent(newEvent *Event) error {
 	var funcErr error
 	doBufferEvents := true
 	// Send event to any listening client's channels
@@ -528,7 +573,7 @@ func (sm *subscriptionManager) handleNewEvent(newEvent *lpEvent) error {
 			if sm.LoggingEnabled {
 				log.Printf("SubscriptionManager: sending event to client: %s\n", clientUUID.String())
 			}
-			clientChan <- []lpEvent{*newEvent}
+			clientChan <- []Event{*newEvent}
 		}
 		// Remove all client subscriptions since we just sent all the
 		// clients an event.  In longpolling, subscriptions only last
@@ -672,11 +717,11 @@ func (sm *subscriptionManager) priorityQueueUpdateBufferCreated(expiringBuf *exp
 	return nil
 }
 
-// Wraps updates to SubscriptionManager.bufferPriorityQueue when a new lpEvent
+// Wraps updates to SubscriptionManager.bufferPriorityQueue when a new Event
 // is added to an eventBuffer.  In the event that we don't expire events
 // (TTL == FOREVER), we don't bother paying the price of keeping the priority
 // queue.
-func (sm *subscriptionManager) priorityQueueUpdateNewEvent(expiringBuf *expiringBuffer, newEvent *lpEvent) error {
+func (sm *subscriptionManager) priorityQueueUpdateNewEvent(expiringBuf *expiringBuffer, newEvent *Event) error {
 	if sm.EventTimeToLiveSeconds == FOREVER {
 		// don't bother keeping track
 		return nil

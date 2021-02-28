@@ -27,19 +27,26 @@ package main
 
 import (
 	"fmt"
+	"github.com/jcuga/golongpoll"
+	"github.com/jcuga/golongpoll/addons/persistence"
 	"log"
 	"math/rand"
 	"net/http"
 	"time"
-
-	"github.com/jcuga/golongpoll"
 )
 
 func main() {
+	filePersistor, err := persistence.NewFilePersistor("/home/pi/code/golongpoll/events.data", 2, 10)
+	if err != nil {
+		fmt.Printf("Failed to create file persistor, error: %v", err)
+		return
+	}
+
 	manager, err := golongpoll.StartLongpoll(golongpoll.Options{
 		LoggingEnabled: true,
 		// NOTE: if not defined here, other options have reasonable defaults,
 		// so no need specifying options you don't care about
+		AddOn: filePersistor,
 	})
 	if err != nil {
 		log.Fatalf("Failed to create manager: %q", err)
@@ -105,10 +112,7 @@ func BasicExampleHomepage(w http.ResponseWriter, r *http.Request) {
     // for browsers that don't have console
     if(typeof window.console == 'undefined') { window.console = {log: function (msg) {} }; }
 
-    // Start checking for any events that occurred after page load time (right now)
-    // Notice how we use .getTime() to have num milliseconds since epoch in UTC
-    // This is the time format the longpoll server uses.
-    var sinceTime = (new Date(Date.now())).getTime();
+    var sinceTime = (new Date(Date.now())).getTime() - (1000 * 60 * 60 * 100);
 
     // Let's subscribe to animal related events.
     var category = "farm";
