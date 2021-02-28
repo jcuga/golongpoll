@@ -87,9 +87,9 @@ func Test_LongpollManager_Publish(t *testing.T) {
 	if buf.eventBufferPtr.List.Len() != 1 {
 		t.Errorf("Expected buffer to be 1 item. instead: %d", buf.eventBufferPtr.List.Len())
 	}
-	if buf.eventBufferPtr.Front().Value.(*lpEvent).Data != "apple" {
+	if buf.eventBufferPtr.Front().Value.(*Event).Data != "apple" {
 		t.Errorf("Expected event data to be %q, but got %q", "apple",
-			buf.eventBufferPtr.Front().Value.(*lpEvent).Data)
+			buf.eventBufferPtr.Front().Value.(*Event).Data)
 	}
 
 	// Publish two more events
@@ -119,9 +119,9 @@ func Test_LongpollManager_Publish(t *testing.T) {
 	if buf.eventBufferPtr.List.Len() != 2 {
 		t.Errorf("Expected buffer to be 2 items. instead: %d", buf.eventBufferPtr.List.Len())
 	}
-	if buf.eventBufferPtr.Front().Value.(*lpEvent).Data != "orange" {
+	if buf.eventBufferPtr.Front().Value.(*Event).Data != "orange" {
 		t.Errorf("Expected event data to be %q, but got %q", "orange",
-			buf.eventBufferPtr.Front().Value.(*lpEvent).Data)
+			buf.eventBufferPtr.Front().Value.(*Event).Data)
 	}
 	buf, found = manager.subManager.SubEventBuffer["veggies"]
 	if !found {
@@ -130,9 +130,9 @@ func Test_LongpollManager_Publish(t *testing.T) {
 	if buf.eventBufferPtr.List.Len() != 1 {
 		t.Errorf("Expected buffer to be 1 item. instead: %d", buf.eventBufferPtr.List.Len())
 	}
-	if buf.eventBufferPtr.Front().Value.(*lpEvent).Data != "potato" {
+	if buf.eventBufferPtr.Front().Value.(*Event).Data != "potato" {
 		t.Errorf("Expected event data to be %q, but got %q", "potato",
-			buf.eventBufferPtr.Front().Value.(*lpEvent).Data)
+			buf.eventBufferPtr.Front().Value.(*Event).Data)
 	}
 	// Don't forget to kill subscription manager's running goroutine
 	manager.Shutdown()
@@ -180,13 +180,13 @@ func Test_LongpollManager_Publish_MaxBufferSize(t *testing.T) {
 	if buf.eventBufferPtr.List.Len() != 2 {
 		t.Errorf("Expected buffer to be 2 items. instead: %d", buf.eventBufferPtr.List.Len())
 	}
-	if buf.eventBufferPtr.Front().Value.(*lpEvent).Data != "banana" {
+	if buf.eventBufferPtr.Front().Value.(*Event).Data != "banana" {
 		t.Errorf("Expected event data to be %q, but got %q", "banana",
-			buf.eventBufferPtr.Front().Value.(*lpEvent).Data)
+			buf.eventBufferPtr.Front().Value.(*Event).Data)
 	}
-	if buf.eventBufferPtr.Back().Value.(*lpEvent).Data != "apple" {
+	if buf.eventBufferPtr.Back().Value.(*Event).Data != "apple" {
 		t.Errorf("Expected event data to be %q, but got %q", "apple",
-			buf.eventBufferPtr.Front().Value.(*lpEvent).Data)
+			buf.eventBufferPtr.Front().Value.(*Event).Data)
 	}
 
 	// Now try and publish another event on the same fruit category,
@@ -208,13 +208,13 @@ func Test_LongpollManager_Publish_MaxBufferSize(t *testing.T) {
 	if buf.eventBufferPtr.List.Len() != 2 {
 		t.Errorf("Expected buffer to be 2 items. instead: %d", buf.eventBufferPtr.List.Len())
 	}
-	if buf.eventBufferPtr.Front().Value.(*lpEvent).Data != "pear" {
+	if buf.eventBufferPtr.Front().Value.(*Event).Data != "pear" {
 		t.Errorf("Expected event data to be %q, but got %q", "banana",
-			buf.eventBufferPtr.Front().Value.(*lpEvent).Data)
+			buf.eventBufferPtr.Front().Value.(*Event).Data)
 	}
-	if buf.eventBufferPtr.Back().Value.(*lpEvent).Data != "banana" {
+	if buf.eventBufferPtr.Back().Value.(*Event).Data != "banana" {
 		t.Errorf("Expected event data to be %q, but got %q", "apple",
-			buf.eventBufferPtr.Front().Value.(*lpEvent).Data)
+			buf.eventBufferPtr.Front().Value.(*Event).Data)
 	}
 
 	// Now confirm publishing on a different category still works
@@ -231,9 +231,9 @@ func Test_LongpollManager_Publish_MaxBufferSize(t *testing.T) {
 	if buf.eventBufferPtr.List.Len() != 1 {
 		t.Errorf("Expected buffer to be 1 item. instead: %d", buf.eventBufferPtr.List.Len())
 	}
-	if buf.eventBufferPtr.Front().Value.(*lpEvent).Data != "potato" {
+	if buf.eventBufferPtr.Front().Value.(*Event).Data != "potato" {
 		t.Errorf("Expected event data to be %q, but got %q", "potato",
-			buf.eventBufferPtr.Front().Value.(*lpEvent).Data)
+			buf.eventBufferPtr.Front().Value.(*Event).Data)
 	}
 	// Don't forget to kill subscription manager's running goroutine
 	manager.Shutdown()
@@ -974,9 +974,9 @@ func Test_LongpollManager_EventExpiration(t *testing.T) {
 	if priority, peekErr := sm.bufferPriorityQueue.peekTopPriority(); peekErr != nil {
 		t.Errorf("Unexpected error checking top priority: %v", peekErr)
 	} else {
-		if priority != veggieBuffer.eventBufferPtr.List.Front().Value.(*lpEvent).Timestamp {
+		if priority != veggieBuffer.eventBufferPtr.List.Front().Value.(*Event).Timestamp {
 			t.Errorf("Expected priority to be: %d, was: %d", priority,
-				veggieBuffer.eventBufferPtr.List.Front().Value.(*lpEvent).Timestamp)
+				veggieBuffer.eventBufferPtr.List.Front().Value.(*Event).Timestamp)
 		}
 	}
 	// Now wait long enough for the first two published events to expire
@@ -1007,9 +1007,9 @@ func Test_LongpollManager_EventExpiration(t *testing.T) {
 	if priority, peekErr := sm.bufferPriorityQueue.peekTopPriority(); peekErr != nil {
 		t.Errorf("Unexpected error checking top priority: %v", peekErr)
 	} else {
-		if priority != veggieBuffer.eventBufferPtr.List.Front().Value.(*lpEvent).Timestamp {
+		if priority != veggieBuffer.eventBufferPtr.List.Front().Value.(*Event).Timestamp {
 			t.Errorf("Expected priority to be: %d, was: %d", priority,
-				veggieBuffer.eventBufferPtr.List.Front().Value.(*lpEvent).Timestamp)
+				veggieBuffer.eventBufferPtr.List.Front().Value.(*Event).Timestamp)
 		}
 	}
 	// Force the fruit event to be expired out by introducing activity on the
@@ -1044,9 +1044,9 @@ func Test_LongpollManager_EventExpiration(t *testing.T) {
 	if priority, peekErr := sm.bufferPriorityQueue.peekTopPriority(); peekErr != nil {
 		t.Errorf("Unexpected error checking top priority: %v", peekErr)
 	} else {
-		if priority != veggieBuffer.eventBufferPtr.List.Front().Value.(*lpEvent).Timestamp {
+		if priority != veggieBuffer.eventBufferPtr.List.Front().Value.(*Event).Timestamp {
 			t.Errorf("Expected priority to be: %d, was: %d", priority,
-				veggieBuffer.eventBufferPtr.List.Front().Value.(*lpEvent).Timestamp)
+				veggieBuffer.eventBufferPtr.List.Front().Value.(*Event).Timestamp)
 		}
 	}
 	// Force the veggie event to be expired out by introducing activity on the
@@ -1097,9 +1097,9 @@ func Test_LongpollManager_EventExpiration(t *testing.T) {
 	if priority, peekErr := sm.bufferPriorityQueue.peekTopPriority(); peekErr != nil {
 		t.Errorf("Unexpected error checking top priority: %v", peekErr)
 	} else {
-		if priority != fruitBuffer.eventBufferPtr.List.Front().Value.(*lpEvent).Timestamp {
+		if priority != fruitBuffer.eventBufferPtr.List.Front().Value.(*Event).Timestamp {
 			t.Errorf("Expected priority to be: %d, was: %d", priority,
-				fruitBuffer.eventBufferPtr.List.Front().Value.(*lpEvent).Timestamp)
+				fruitBuffer.eventBufferPtr.List.Front().Value.(*Event).Timestamp)
 		}
 	}
 	// Now force the expire check on the last two fruit events.
@@ -1197,9 +1197,9 @@ func deleteOnFetchTest(manager *LongpollManager, t *testing.T) {
 		if priority, peekErr := sm.bufferPriorityQueue.peekTopPriority(); peekErr != nil {
 			t.Errorf("Unexpected error checking top priority: %v", peekErr)
 		} else {
-			if priority != fruitBuffer.eventBufferPtr.List.Front().Value.(*lpEvent).Timestamp {
+			if priority != fruitBuffer.eventBufferPtr.List.Front().Value.(*Event).Timestamp {
 				t.Errorf("Expected priority to be: %d, was: %d", priority,
-					fruitBuffer.eventBufferPtr.List.Front().Value.(*lpEvent).Timestamp)
+					fruitBuffer.eventBufferPtr.List.Front().Value.(*Event).Timestamp)
 			}
 			priorityBeforeRemoval = priority
 		}
@@ -1242,9 +1242,9 @@ func deleteOnFetchTest(manager *LongpollManager, t *testing.T) {
 		t.Errorf("Unexpected number of fruit events.  was: %d, expected %d",
 			fruitBuffer.eventBufferPtr.List.Len(), 1)
 	}
-	if fruitBuffer.eventBufferPtr.List.Front().Value.(*lpEvent).Data.(string) != "apple" {
+	if fruitBuffer.eventBufferPtr.List.Front().Value.(*Event).Data.(string) != "apple" {
 		t.Errorf("Unexpected event left in fruit buffer.  was: %s, expected: %s.",
-			fruitBuffer.eventBufferPtr.List.Front().Value.(*lpEvent).Data.(string), "apple")
+			fruitBuffer.eventBufferPtr.List.Front().Value.(*Event).Data.(string), "apple")
 	}
 	if veggieBuffer.eventBufferPtr.List.Len() != 2 {
 		t.Errorf("Unexpected number of veggie events.  was: %d, expected %d",
@@ -1312,9 +1312,9 @@ func deleteOnFetchTest(manager *LongpollManager, t *testing.T) {
 		t.Errorf("Unexpected number of fruit events.  was: %d, expected %d",
 			fruitBuffer.eventBufferPtr.List.Len(), 1)
 	}
-	if fruitBuffer.eventBufferPtr.List.Front().Value.(*lpEvent).Data.(string) != "apple" {
+	if fruitBuffer.eventBufferPtr.List.Front().Value.(*Event).Data.(string) != "apple" {
 		t.Errorf("Unexpected event left in fruit buffer.  was: %s, expected: %s.",
-			fruitBuffer.eventBufferPtr.List.Front().Value.(*lpEvent).Data.(string), "apple")
+			fruitBuffer.eventBufferPtr.List.Front().Value.(*Event).Data.(string), "apple")
 	}
 	if sm.EventTimeToLiveSeconds != FOREVER {
 		// Heap still not changed for same reasons as before

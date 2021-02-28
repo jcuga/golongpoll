@@ -14,7 +14,7 @@ func Test_eventBuffer_QueueEvent(t *testing.T) {
 		10, // max buffer size
 		timeToEpochMilliseconds(testStart),
 	}
-	var events = []lpEvent{
+	var events = []Event{
 		newEventWithTime(testStart.Add(-10*time.Second), "red", "some string data 1"),
 		newEventWithTime(testStart.Add(-5*time.Second), "blue", "some string data 2"),
 		newEventWithTime(testStart, "red", "some string data 3"),
@@ -39,7 +39,7 @@ func Test_eventBuffer_QueueEvent(t *testing.T) {
 	// to get chronological order (oldest first)
 	for element := buffer.List.Back(); element != nil; element = element.Prev() {
 		// Make sure converts back to Event
-		event, ok := element.Value.(*lpEvent)
+		event, ok := element.Value.(*Event)
 		if !ok {
 			t.Errorf("Found non-event type in event buffer at index %d.", eventIndex)
 		}
@@ -62,7 +62,7 @@ func Test_eventBuffer_QueueEvent_MaxBufferReached(t *testing.T) {
 		timeToEpochMilliseconds(testStart),
 	}
 	// Create moreThanMax events
-	events := make([]lpEvent, 0)
+	events := make([]Event, 0)
 	for i := 0; i < moreThanMax; i++ {
 		events = append(events,
 			newEventWithTime(testStart.Add(time.Duration(i)*time.Second),
@@ -95,7 +95,7 @@ func Test_eventBuffer_QueueEvent_MaxBufferReached(t *testing.T) {
 	eventIndex := moreThanMax - max
 	for element := buffer.List.Back(); element != nil; element = element.Prev() {
 		// Make sure converts back to Event
-		event, ok := element.Value.(*lpEvent)
+		event, ok := element.Value.(*Event)
 		if !ok {
 			t.Errorf("Found non-event type in event buffer at index %d.", eventIndex)
 		}
@@ -140,7 +140,7 @@ func Test_eventBuffer_GetEventsSince(t *testing.T) {
 	}
 	// Three of the events in our buffer occurred after our since param
 	since := testStart.Add(-9 * time.Second)
-	var events = []lpEvent{
+	var events = []Event{
 		newEventWithTime(testStart.Add(-12*time.Second), "red", "some string data 1"),
 		newEventWithTime(testStart.Add(-11*time.Second), "blue", "some string data 2"),
 		newEventWithTime(testStart.Add(-8*time.Second), "red", "some string data 3"),
@@ -190,7 +190,7 @@ func Test_eventBuffer_GetEventsSince_lastEventUUID(t *testing.T) {
 		timeToEpochMilliseconds(testStart),
 	}
 
-	var events = []lpEvent{
+	var events = []Event{
 		newEventWithTime(testStart.Add(-3*time.Second), "news", "Cheese is good."),
 		newEventWithTime(testStart.Add(-2*time.Second), "news", "I like cheese."),
 		newEventWithTime(testStart.Add(-2*time.Second), "news", "We are out of cheese."),
@@ -337,7 +337,7 @@ func Test_eventBuffer_GetEventsSince_deleteFetchedEvents(t *testing.T) {
 	}
 	// Three of the events in our buffer occurred after our since param
 	since := testStart.Add(-9 * time.Second)
-	var events = []lpEvent{
+	var events = []Event{
 		newEventWithTime(testStart.Add(-12*time.Second), "red", "some string data 1"),
 		newEventWithTime(testStart.Add(-11*time.Second), "blue", "some string data 2"),
 		newEventWithTime(testStart.Add(-8*time.Second), "red", "some string data 3"),
@@ -385,10 +385,10 @@ func Test_eventBuffer_GetEventsSince_deleteFetchedEvents(t *testing.T) {
 		t.Errorf("buffer had unexpected number of events.  was: %d, expected: %d.",
 			buffer.List.Len(), 2)
 	}
-	if buffer.List.Front().Value.(*lpEvent) != &events[1] {
+	if buffer.List.Front().Value.(*Event) != &events[1] {
 		t.Errorf("buffer had unexpected event at front. expected events[1].")
 	}
-	if buffer.List.Front().Next().Value.(*lpEvent) != &events[0] {
+	if buffer.List.Front().Next().Value.(*Event) != &events[0] {
 		t.Errorf("buffer had unexpected event at second item. expected events[0].")
 	}
 }
@@ -401,7 +401,7 @@ func Test_eventBuffer_GetEventsSince_AllEvents(t *testing.T) {
 	}
 	// All of the events in the buffer occurred after our since param
 	since := time.Now().Add(-30 * time.Second)
-	var events = []lpEvent{
+	var events = []Event{
 		newEventWithTime(time.Now().Add(-12*time.Second), "red", "some string data 1"),
 		newEventWithTime(time.Now().Add(-11*time.Second), "blue", "some string data 2"),
 		newEventWithTime(time.Now().Add(-8*time.Second), "red", "some string data 3"),
@@ -438,7 +438,7 @@ func Test_eventBuffer_GetEventsSince_NoEvents(t *testing.T) {
 	}
 	// None of the events in the buffer occurred after our since param
 	since := time.Now()
-	var events = []lpEvent{
+	var events = []Event{
 		newEventWithTime(time.Now().Add(-12*time.Second), "red", "some string data 1"),
 		newEventWithTime(time.Now().Add(-11*time.Second), "blue", "some string data 2"),
 		newEventWithTime(time.Now().Add(-8*time.Second), "red", "some string data 3"),
@@ -522,7 +522,7 @@ func Test_eventBuffer_DeleteEventsOlderThan_InvalidData(t *testing.T) {
 		10, // max buffer size
 		timeToEpochMilliseconds(testStart),
 	}
-	// Corrupt list by adding something that is not an lpEvent:
+	// Corrupt list by adding something that is not an Event:
 	buffer.List.PushBack("asdf")
 	// Confirm calls to operate on this list are now errors
 	err := buffer.DeleteEventsOlderThan(timeToEpochMilliseconds(testStart.Add(1 * time.Second)))
@@ -541,7 +541,7 @@ func Test_eventBuffer_DeleteEventsOlderThan(t *testing.T) {
 		10, // max buffer size
 		timeToEpochMilliseconds(testStart),
 	}
-	var events = []lpEvent{
+	var events = []Event{
 		newEventWithTime(testStart.Add(-12*time.Second), "red", "some string data 1"),
 		newEventWithTime(testStart.Add(-11*time.Second), "blue", "some string data 2"),
 		newEventWithTime(testStart.Add(-8*time.Second), "red", "some string data 3"),
