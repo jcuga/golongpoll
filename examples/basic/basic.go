@@ -30,9 +30,7 @@ import (
 	"github.com/jcuga/golongpoll"
 	"github.com/jcuga/golongpoll/addons/persistence"
 	"log"
-	"math/rand"
 	"net/http"
-	"time"
 )
 
 func main() {
@@ -51,13 +49,13 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to create manager: %q", err)
 	}
-	// pump out random events
-	go generateRandomEvents(manager)
+
 	// Serve our basic example driver webpage
 	http.HandleFunc("/basic", BasicExampleHomepage)
 
 	// Serve our event subscription web handler
 	http.HandleFunc("/basic/events", manager.SubscriptionHandler)
+	http.HandleFunc("/basic/publish", getPublishHandler(manager))
 
 	fmt.Println("Serving webpage at http://127.0.0.1:8081/basic")
 	http.ListenAndServe("127.0.0.1:8081", nil)
@@ -72,30 +70,19 @@ func main() {
 	// exit on main() exit.  But I wanted to show you that it is possible.
 }
 
-func generateRandomEvents(lpManager *golongpoll.LongpollManager) {
-	farmEvents := []string{
-		"Cow says 'Moooo!'",
-		"Duck went 'Quack!'",
-		"Chicken says: 'Cluck!'",
-		"Goat chewed grass.",
-		"Pig went 'Oink! Oink!'",
-		"Horse ate hay.",
-		"Tractor went: Vroom Vroom!",
-		"Farmer ate bacon.",
-	}
-	// every 0-5 seconds, something happens at the farm:
-	for {
-		time.Sleep(time.Duration(rand.Intn(5000)) * time.Millisecond)
-		lpManager.Publish("farm", farmEvents[rand.Intn(len(farmEvents))])
+func getPublishHandler(manager *golongpoll.LongpollManager) func(w http.ResponseWriter, r *http.Request) {
+	// Creates closure that captures the LongpollManager
+	return func(w http.ResponseWriter, r *http.Request) {
+		data := r.URL.Query().Get("data")
+		if len(data) == 0 {
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write([]byte("Missing required URL param 'data'."))
+			return
+		}
+		manager.Publish("echo", data)
 	}
 }
 
-// BasicExampleHomepage provides a webpage that shows events as they happen.
-// In this code you'll see a sample of how to implement longpolling on the
-// client side in javascript.  I used jquery here...
-//
-// I was too lazy to serve this file statically.
-// This is me setting a bad example :)
 func BasicExampleHomepage(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, `
 <html>
@@ -104,18 +91,35 @@ func BasicExampleHomepage(w http.ResponseWriter, r *http.Request) {
 </head>
 <body>
     <h1>golongpoll basic example</h1>
-    <h2>Here's whats happening around the farm:</h2>
+    <input id="publish-input"type="text" /> <button id="publish-btn" onclick="publish()">Publish</button>
+    <h2>Events</h2>
     <ul id="animal-events"></ul>
 <script src="http://code.jquery.com/jquery-1.11.3.min.js"></script>
 <script>
 
+    function publish() {
+        var data = $("#publish-input").val();
+        if (data.length == 0) {
+            alert("input cannot be empty");
+            return;
+        }
+
+        var jqxhr = $.get( "/basic/publish", { data: data })
+            .done(function() {
+                console.log("post successful");
+            })
+            .fail(function() {
+              alert( "post request failed" );
+            });
+    }
+
     // for browsers that don't have console
     if(typeof window.console == 'undefined') { window.console = {log: function (msg) {} }; }
 
-    var sinceTime = (new Date(Date.now())).getTime() - (1000 * 60 * 60 * 100);
+    var sinceTime = 1;
 
     // Let's subscribe to animal related events.
-    var category = "farm";
+    var category = "echo";
 
     (function poll() {
         var timeout = 45;  // in seconds

@@ -90,9 +90,9 @@ func NewFilePersistor(filename string, writeBatchSize int, writeFlushPeriodSecon
 		lastFlushTime := time.Now()
 		buf := make([]*golongpoll.Event, 0, writeBatchSize) // len=0, cap=writeBatchSize
 
-		outFile, err := os.OpenFile(filename, os.O_RDWR|os.O_CREATE, 0755)
+		outFile, err := os.OpenFile(filename, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0755) // NOTE: O_APPEND is critical here as was getting weird file data wrapping around across restarts!
 		if err != nil {
-			fmt.Printf(" ERROR >>>> failed to open file: %v\n", err) // TODO: remove me
+			fmt.Printf(" ERROR >>>> failed to open file: %v\n", err) // TODO: remove me/replace with something else
 			// TODO: do anything else? log? return error? then calling code can check to know cut out early.
 			return
 		}
@@ -105,12 +105,10 @@ func NewFilePersistor(filename string, writeBatchSize int, writeFlushPeriodSecon
 			select {
 			case event, ok := <-fp.publishedEvents:
 				if !ok {
-					fmt.Printf(" DEBUG >>>> got channel close, stoppings\n") // TODO: remove me
 					// channel closed, flush any buffered data to disk and stop
 					FlushToDisk(buf, w)
 					return
 				}
-				fmt.Printf(" DEBUG >>>> adding to bufer\n") // TODO: remove me
 				buf = append(buf, &event)
 				if len(buf) >= writeBatchSize {
 					FlushToDisk(buf, w)
