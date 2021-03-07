@@ -6,13 +6,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/gofrs/uuid"
 	"io"
 	"log"
 	"net/http"
 	"strconv"
 	"time"
-
-	"github.com/gofrs/uuid"
 )
 
 const (
@@ -87,13 +86,22 @@ func (m *LongpollManager) Publish(category string, data interface{}) error {
 	return nil
 }
 
-// Shutdown allows the internal goroutine that handles the longpull pup-sub
-// to be stopped.  This may be useful if you want to turn off longpolling
-// without terminating your program.  After a shutdown, you can't call Publish()
-// or get any new results from the SubscriptionHandler.  Multiple calls to
-// this function on the same manager will result in a panic.
+// TODO: update comment--see other branch for what this used to say
+// TODO: mention that this is blocking on any addon shutdown (and other lpmanager stuff? did i add anything else to shutdown case in run routine?)
 func (m *LongpollManager) Shutdown() {
 	close(m.stopSignal)
+	<-m.subManager.shutdownDone
+}
+
+// TODO: update comment
+func (m *LongpollManager) ShutdownWithTimeout(seconds int) error {
+	close(m.stopSignal)
+	select {
+	case <-m.subManager.shutdownDone:
+		return nil
+	case <-time.After(time.Duration(seconds) * time.Second):
+		return errors.New("LongpollManager Shutdown timeout exceeded.")
+	}
 }
 
 // Options for LongpollManager that get sent to StartLongpoll(options)
@@ -178,6 +186,7 @@ func StartLongpoll(opts Options) (*LongpollManager, error) {
 		ClientSubChannels:              make(map[string]map[uuid.UUID]chan<- []Event),
 		SubEventBuffer:                 make(map[string]*expiringBuffer),
 		Quit:                           quit,
+		shutdownDone:                   make(chan bool, 1),
 		LoggingEnabled:                 opts.LoggingEnabled,
 		MaxLongpollTimeoutSeconds:      opts.MaxLongpollTimeoutSeconds,
 		MaxEventBufferSize:             opts.MaxEventBufferSize,
@@ -202,11 +211,19 @@ func StartLongpoll(opts Options) (*LongpollManager, error) {
 	// Optionally prepopulate with data
 	if subManager.AddOn != nil {
 		startChan := subManager.AddOn.OnLongpollStart()
+
+		// Don't add events if they would already be considered expired by the longpoll options.
+		cutoffTime := int64(0)
+		if subManager.EventTimeToLiveSeconds > 0 {
+			cutoffTime = timeToEpochMilliseconds(time.Now()) - int64(subManager.EventTimeToLiveSeconds*1000)
+		}
+
 		for {
 			event, ok := <-startChan
 			if ok {
-				// TODO: enforce any options TTL preemptively by not handling stale events? or is this onus on the add-on implementor?
-				subManager.handleNewEvent(&event)
+				if event.Timestamp > cutoffTime {
+					subManager.handleNewEvent(&event)
+				}
 			} else {
 				// channel closed, we're done populating
 				break
@@ -400,6 +417,7 @@ type subscriptionManager struct {
 	SubEventBuffer    map[string]*expiringBuffer
 	// channel to inform manager to stop running
 	Quit           <-chan bool
+	shutdownDone   chan bool
 	LoggingEnabled bool
 	// Max allowed timeout seconds when clients requesting a longpoll
 	// This is to validate the 'timeout' query param
@@ -458,6 +476,10 @@ func (sm *subscriptionManager) run() error {
 			if sm.AddOn != nil {
 				sm.AddOn.OnShutdown()
 			}
+
+			// signal done shutting down
+			close(sm.shutdownDone)
+
 			// break out of our infinite loop/select
 			return nil
 		}

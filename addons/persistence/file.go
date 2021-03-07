@@ -22,43 +22,26 @@ import (
 	"time"
 )
 
-// TODO: also event TTL or other options to do pruning?
-// TODO: does longpoll manager start also enforce TLL stuff on insert?
-// TODO: update hook docs in longpoll.go and the impl here that calls out blocking calls and how to unblock via channels/goroutines
-// TODO: use this in unit test to make sure follows iface and can be used as advertized
-
+// TODO: go thru this and comment everything including funcs and struct members
 type FilePersistor struct {
 	// Filename to use for storing events. The file will be created if it
 	// does not already exist.
 	filename string
-	// How many events to buffer before writing to file.
-	// This can be used to avoid excessive writes.
-	// Setting to 1 will cause every event to be individually written to file.
-	// This means less likelihood of losing data to a program crash, but
-	// at the cost of more file writes. Note: if the program shuts down
-	// gracefully and calls LonpollManager.Shutdown() then FilePersistor will
-	// write all buffered events to file before stopping via the OnShutdown callback.
-	writeBatchSize int
-	// How often to flush events to file in lieu of hitting the batch size.
-	// This is used along with writeBatchSize to ensure events make it
-	// to file in the event of a program crash.  All buffered events will be written
-	// via OnShutdown if calling code shuts down gracefully and calls LonpollManager.Shutdown().
+	// TODO: update comments for all of this and whole file
+	writeBufferSize         int
 	writeFlushPeriodSeconds int
-
 	// channel for incoming published events.
 	// To avoid blocking calling LongpollManager when it calls
 	// OnPublish, we send events to channel for processing in a separate goroutine.
 	publishedEvents chan golongpoll.Event
+	// Channel used to signal when done flushing to disk on shutdown.
+	shutdownDone chan bool
 }
 
-// Create a new FilePersistor with the desired options.
-// filename is the file to write events to, and read back out of on longpoll start.
-// writeBatchSize dictates how many events are buffered before written to file.
-// writeFlushPeriodSeconds is the max amount of seconds elapse between flushing events
-// to file in the event batch size has not been reached yet.
-func NewFilePersistor(filename string, writeBatchSize int, writeFlushPeriodSeconds int) (*FilePersistor, error) {
-	if writeBatchSize < 1 {
-		return nil, errors.New("writeBatchSize must be > 0")
+// TODO: comments
+func NewFilePersistor(filename string, writeBufferSize int, writeFlushPeriodSeconds int) (*FilePersistor, error) {
+	if writeBufferSize < 1 {
+		return nil, errors.New("writeBufferSize must be > 0")
 	}
 
 	if writeFlushPeriodSeconds < 1 {
@@ -80,79 +63,23 @@ func NewFilePersistor(filename string, writeBatchSize int, writeFlushPeriodSecon
 
 	fp := FilePersistor{
 		filename:                filename,
-		writeBatchSize:          writeBatchSize,
+		writeBufferSize:         writeBufferSize,
 		writeFlushPeriodSeconds: writeFlushPeriodSeconds,
 		publishedEvents:         eventsIn,
+		shutdownDone:            make(chan bool, 1),
 	}
-
-	// TODO: launch goroutine with run func either here or on longpoll start
-	go func() {
-		lastFlushTime := time.Now()
-		buf := make([]*golongpoll.Event, 0, writeBatchSize) // len=0, cap=writeBatchSize
-
-		outFile, err := os.OpenFile(filename, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0755) // NOTE: O_APPEND is critical here as was getting weird file data wrapping around across restarts!
-		if err != nil {
-			fmt.Printf(" ERROR >>>> failed to open file: %v\n", err) // TODO: remove me/replace with something else
-			// TODO: do anything else? log? return error? then calling code can check to know cut out early.
-			return
-		}
-		defer outFile.Close()
-		w := bufio.NewWriter(outFile)
-		defer w.Flush()
-
-		fmt.Print(" DEBUG >>> started goroutine select")
-		for {
-			select {
-			case event, ok := <-fp.publishedEvents:
-				if !ok {
-					// channel closed, flush any buffered data to disk and stop
-					FlushToDisk(buf, w)
-					return
-				}
-				buf = append(buf, &event)
-				if len(buf) >= writeBatchSize {
-					FlushToDisk(buf, w)
-					buf = nil // resets to empty slice. old data is free to be garbage collected
-					lastFlushTime = time.Now()
-				} else {
-					if FlushIfTimeReached(lastFlushTime, writeFlushPeriodSeconds, buf, w) {
-						lastFlushTime = time.Now()
-						buf = nil
-					}
-				}
-			case <-time.After(time.Duration(250) * time.Millisecond):
-				if FlushIfTimeReached(lastFlushTime, writeFlushPeriodSeconds, buf, w) {
-					lastFlushTime = time.Now()
-					buf = nil
-				}
-			}
-		}
-	}()
-
 	return &fp, nil
 }
 
-// Checks if configured amount of time has passed to merit a flush to disk.
-func FlushIfTimeReached(lastFlushTime time.Time, writeFlushPeriodSeconds int, buf []*golongpoll.Event, w *bufio.Writer) bool {
-	diff := time.Now().Sub(lastFlushTime)
-	if diff.Seconds() >= float64(writeFlushPeriodSeconds) {
-		FlushToDisk(buf, w)
-		return true
-	}
-
-	return false
-}
-
-// TODO: update to return error if writes fail, handle higher up
-func FlushToDisk(buf []*golongpoll.Event, w *bufio.Writer) {
-	// TODO: confirm marshalled json escapes any newlines within inner fields so that each one is guaranteed to be on own line
-	fmt.Printf(" DEBUG >>>> calling flush to disk\n") // TODO: remove me
-	for _, event := range buf {
-		eventJson, _ := json.Marshal(event) // TODO: check err and return it? or log error and skip?
-		w.Write(eventJson)                  // TODO: check returned error (ignore bytes written return?)
-		w.WriteString("\n")
-		w.Flush() // TODO: just use bufio.Writer to begin with and don't buffer items here?
-	}
+// TODO: enforce TTL? probably not here...
+func (fp *FilePersistor) OnLongpollStart() <-chan golongpoll.Event {
+	// return a channel to send initial events to
+	ch := make(chan golongpoll.Event)
+	// populate input events channel in own goroutine
+	go fp.getOnStartInputEvents(ch)
+	// launch the FilePersistor's run goroutine. This will read from (a different) channel to handle OnPublish callbacks.
+	go fp.run()
+	return ch
 }
 
 func (fp *FilePersistor) OnPublish(event golongpoll.Event) {
@@ -165,53 +92,113 @@ func (fp *FilePersistor) OnPublish(event golongpoll.Event) {
 // TODO: perhaps accepts a channel that can write to once done? or returns a channel?
 // TODO: update longpoll Shutdown() to return channel to let caller know when shutdown is finished? or block until addon finishes? or both?
 func (fp *FilePersistor) OnShutdown() {
+	fmt.Println("addon shutdown func start.") // TODO: remove me
 	// Signal to stop working and finish up.
 	close(fp.publishedEvents)
-	// TODO: add plumbing to wait for other goroutine to signal done writing stuff out
-	// TODO: block on this call until then?
-	// TODO: lpmanager shutdown should wait for this to finsih--and possibly wait for its own internal routines to finish too if not already doing that...
+
+	fmt.Println("addon shutdown artificial delay start") // TODO: remove me
+
+	fmt.Println("FOOOOOOEY before timeout select")
+	select {
+	case <-time.After(10 * time.Second):
+		break
+	}
+	fmt.Println("FOOOOOOEY after timeout select")
+	// wait for signal that flush to disk has finished (channel will be closed)
+	<-fp.shutdownDone
+
+	fmt.Println("addon shutdown func end.") // TODO: remove me
 }
 
-// TODO: enforce TTL? probably not here...
-func (fp *FilePersistor) OnLongpollStart() <-chan golongpoll.Event {
-	ch := make(chan golongpoll.Event)
+func (fp *FilePersistor) getOnStartInputEvents(ch chan golongpoll.Event) {
+	// NOTE: https://golang.org/src/bufio/scan.go?s=3956:3993#L77
+	// SEE: MaxScanTokenSize is set to 64kb
+	// so any event that, when represented as JSON, is larger than
+	// 64 kb, it would not fit in the scanner's buffer.
+	// To handle larger data, need to provdie an explicit buffer with Scanner.Buffer.
+	// TODO: option for providing this? or option to auto create size? maybe make
+	// a variant of this add-on for custom large size buffer.
+	f, err := os.Open(fp.filename)
+	if err != nil {
+		// TODO: way to return error? cause longpoll manager to not start?
+		fmt.Printf("DEBUG >> ERROR >> failed to open file: %v\n", err)
+		close(ch)
+		return
+	}
+	defer f.Close()
 
-	go func() {
-		// NOTE: https://golang.org/src/bufio/scan.go?s=3956:3993#L77
-		// SEE: MaxScanTokenSize is set to 64kb
-		// so any event that, when represented as JSON, is larger than
-		// 64 kb, it would not fit in the scanner's buffer.
-		// To handle larger data, need to provdie an explicit buffer with Scanner.Buffer.
-		// TODO: option for providing this? or option to auto create size? maybe make
-		// a variant of this add-on for custom large size buffer.
-		f, err := os.Open(fp.filename)
-		if err != nil {
-			// TODO: way to return error? cause longpoll manager to not start?
-			fmt.Printf("DEBUG >> ERROR >> failed to open file: %v\n", err)
-			close(ch)
-			return
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		// TODO: what is the bufio scanner's max buffer size? call out in comments supported max event json serialized size
+		var event golongpoll.Event
+		var line = scanner.Bytes()
+		// skip any blank lines as we prepend newline before writing event json.
+		// NOTE: doing prepend instead of append so if an event getting written out is
+		// stopped prematurely due to an ungraceful shutdown, we will start a subsequent
+		// write on it's own line.
+		if len(line) == 0 {
+			continue
 		}
-		defer f.Close()
+		if err := json.Unmarshal(line, &event); err != nil {
+			// TODO: log, do other things?
+			fmt.Printf("Failed to unmarshal event json, error: %v\n", err)
+			continue
+		} else {
+			fmt.Printf("DEBUG >> ADDING ON START EVENT ....  boom!")
+			ch <- event
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		fmt.Printf("Error scanning file: %v\n", err)
+		// TODO: log, return error? what?
+		//fmt.Fprintln(os.Stderr, "reading standard input:", err)
+	}
 
-		scanner := bufio.NewScanner(f)
-		for scanner.Scan() {
-			var event golongpoll.Event
-			if err := json.Unmarshal(scanner.Bytes(), &event); err != nil {
-				// TODO: log, do other things?
-				fmt.Printf("Failed to unmarshal event json, error: %v\n", err)
-				continue
-			} else {
-				fmt.Printf("DEBUG >> ADDING ON START EVENT ....  boom!")
-				ch <- event
+	close(ch) // NOTE: important to close--or calling LongpollManager will hang waiting for more channel data.
+}
+
+func (fp *FilePersistor) run() {
+	lastFlushTime := time.Now()
+	outFile, err := os.OpenFile(fp.filename, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0755) // NOTE: O_APPEND is critical here as was getting weird file data wrapping around across restarts!
+	if err != nil {
+		fmt.Printf(" ERROR >>>> failed to open file: %v\n", err) // TODO: remove me/replace with something else
+		// TODO: do anything else? log? return error? then calling code can check to know cut out early.
+		return
+	}
+	defer outFile.Close()
+	w := bufio.NewWriterSize(outFile, fp.writeBufferSize)
+	defer w.Flush()
+
+	for {
+		select {
+		case event, ok := <-fp.publishedEvents:
+			if !ok {
+				// channel closed, flush any buffered data to disk and stop
+				w.Flush()
+				// signal finished shutting down, OnShutdown is blocking waiting for channel action
+				close(fp.shutdownDone)
+				return
+			}
+
+			eventJson, _ := json.Marshal(event) // TODO: check err and return it? or log error and skip?
+			w.WriteString("\n")                 // NOTE: adding newline before instead of after in case last event wasn't fully written out to completion
+			w.Write(eventJson)                  // TODO: check returned error (ignore bytes written return?)
+
+			if IsTimeToFlush(lastFlushTime, fp.writeFlushPeriodSeconds) {
+				w.Flush()
+				lastFlushTime = time.Now()
+			}
+
+		case <-time.After(time.Duration(500) * time.Millisecond):
+			if IsTimeToFlush(lastFlushTime, fp.writeFlushPeriodSeconds) {
+				w.Flush()
+				lastFlushTime = time.Now()
 			}
 		}
-		if err := scanner.Err(); err != nil {
-			fmt.Printf("Error scanning file: %v\n", err)
-			// TODO: log, return error? what?
-			//fmt.Fprintln(os.Stderr, "reading standard input:", err)
-		}
+	}
+}
 
-		close(ch) // NOTE: important to close--or calling LongpollManager will hang waiting for more channel data.
-	}()
-	return ch
+func IsTimeToFlush(lastFlushTime time.Time, writeFlushPeriodSeconds int) bool {
+	diff := time.Now().Sub(lastFlushTime)
+	return diff.Seconds() >= float64(writeFlushPeriodSeconds)
 }
