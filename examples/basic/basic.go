@@ -70,15 +70,10 @@ func main() {
 			// handle err
 			close(httpDone)
 		}
-		fmt.Println("HI MOM DO YOU SEE ME?") // TODO: remove!
-
-		// TODO: make ShutdownWithTimeout that returns timeout error?
-		fmt.Println("Calling manager shutdown.")
 		sErr := manager.ShutdownWithTimeout(5) // TODO: comment about this
 		if sErr != nil {
 			fmt.Println("Got shutdown error: ", sErr)
 		}
-		fmt.Println("Manager shutdown complete.")
 	}()
 
 	// Setting up signal capturing
@@ -88,7 +83,7 @@ func main() {
 	// Waiting for SIGINT (pkill -2)
 	<-stop
 
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := server.Shutdown(ctx); err != nil {
 		// TODO: handle err

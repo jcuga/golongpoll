@@ -22,12 +22,10 @@ import (
 	"time"
 )
 
-// TODO: go thru this and comment everything including funcs and struct members
 type FilePersistor struct {
 	// Filename to use for storing events. The file will be created if it
 	// does not already exist.
-	filename string
-	// TODO: update comments for all of this and whole file
+	filename                string
 	writeBufferSize         int
 	writeFlushPeriodSeconds int
 	// channel for incoming published events.
@@ -71,7 +69,6 @@ func NewFilePersistor(filename string, writeBufferSize int, writeFlushPeriodSeco
 	return &fp, nil
 }
 
-// TODO: enforce TTL? probably not here...
 func (fp *FilePersistor) OnLongpollStart() <-chan golongpoll.Event {
 	// return a channel to send initial events to
 	ch := make(chan golongpoll.Event)
@@ -88,36 +85,18 @@ func (fp *FilePersistor) OnPublish(event golongpoll.Event) {
 	fp.publishedEvents <- event
 }
 
-// TODO: way to convey back that done doing shutdown cleanup? otherwise would have to arbitrarily wait...
-// TODO: perhaps accepts a channel that can write to once done? or returns a channel?
-// TODO: update longpoll Shutdown() to return channel to let caller know when shutdown is finished? or block until addon finishes? or both?
 func (fp *FilePersistor) OnShutdown() {
-	fmt.Println("addon shutdown func start.") // TODO: remove me
 	// Signal to stop working and finish up.
 	close(fp.publishedEvents)
-
-	fmt.Println("addon shutdown artificial delay start") // TODO: remove me
-
-	fmt.Println("FOOOOOOEY before timeout select")
 	select {
 	case <-time.After(10 * time.Second):
 		break
 	}
-	fmt.Println("FOOOOOOEY after timeout select")
 	// wait for signal that flush to disk has finished (channel will be closed)
 	<-fp.shutdownDone
-
-	fmt.Println("addon shutdown func end.") // TODO: remove me
 }
 
 func (fp *FilePersistor) getOnStartInputEvents(ch chan golongpoll.Event) {
-	// NOTE: https://golang.org/src/bufio/scan.go?s=3956:3993#L77
-	// SEE: MaxScanTokenSize is set to 64kb
-	// so any event that, when represented as JSON, is larger than
-	// 64 kb, it would not fit in the scanner's buffer.
-	// To handle larger data, need to provdie an explicit buffer with Scanner.Buffer.
-	// TODO: option for providing this? or option to auto create size? maybe make
-	// a variant of this add-on for custom large size buffer.
 	f, err := os.Open(fp.filename)
 	if err != nil {
 		// TODO: way to return error? cause longpoll manager to not start?
