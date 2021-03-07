@@ -52,10 +52,6 @@ type LongpollManager struct {
 	SubscriptionHandler func(w http.ResponseWriter, r *http.Request)
 }
 
-// Interface providing library clients a way to do something with events created
-// from LongpollManager.Publish(). This can be useful for things like
-// logging or saving events in a database/storage.
-
 // AddOn provides a way to add behavior to longpolling.
 // For example: addons/persistence/file.go provides a way to
 // persist events to file to reuse across LongpollManager runs.
@@ -63,7 +59,7 @@ type AddOn interface {
 	OnLongpollStart() <-chan Event
 	OnPublish(Event)
 	OnShutdown()
-} // TODO: ptu AddOn and Options in own .go files?
+}
 
 // Publish an event for a given subscription category.  This event can have any
 // arbitrary data that is convert-able to JSON via the standard's json.Marshal()
@@ -86,14 +82,21 @@ func (m *LongpollManager) Publish(category string, data interface{}) error {
 	return nil
 }
 
-// TODO: update comment--see other branch for what this used to say
-// TODO: mention that this is blocking on any addon shutdown (and other lpmanager stuff? did i add anything else to shutdown case in run routine?)
+// Shutdown will stop the LongpollManager's run goroutine and call Addon.OnShutdown.
+// This will block on the Addon's shutdown call if an AddOn is provided.
+// In addition to allowing a graceful shutdown, this can be useful if you want
+// to turn off longpolling without terminating your program.
+// After a shutdown, you can't call Publish() or get any new results from the
+// SubscriptionHandler.  Multiple calls to this function on the same manager will
+// result in a panic.
 func (m *LongpollManager) Shutdown() {
 	close(m.stopSignal)
 	<-m.subManager.shutdownDone
 }
 
-// TODO: update comment
+// ShutdownWithTimeout will call Shutdown but only block for a provided
+// amount of time when waiting for the shutdown to complete.
+// Returns an error on timeout, otherwise nil.
 func (m *LongpollManager) ShutdownWithTimeout(seconds int) error {
 	close(m.stopSignal)
 	select {
