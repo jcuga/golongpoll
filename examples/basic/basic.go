@@ -26,15 +26,19 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"github.com/jcuga/golongpoll"
 	"github.com/jcuga/golongpoll/addons/persistence"
 	"log"
 	"net/http"
+	"os"
+	"os/signal"
+	"time"
 )
 
 func main() {
-	filePersistor, err := persistence.NewFilePersistor("/home/pi/code/golongpoll/events.data", 2, 10)
+	filePersistor, err := persistence.NewFilePersistor("/home/pi/code/golongpoll/events.data", 4096, 30)
 	if err != nil {
 		fmt.Printf("Failed to create file persistor, error: %v", err)
 		return
@@ -50,24 +54,51 @@ func main() {
 		log.Fatalf("Failed to create manager: %q", err)
 	}
 
+	mux := http.NewServeMux()
 	// Serve our basic example driver webpage
-	http.HandleFunc("/basic", BasicExampleHomepage)
-
+	mux.HandleFunc("/basic", BasicExampleHomepage)
 	// Serve our event subscription web handler
-	http.HandleFunc("/basic/events", manager.SubscriptionHandler)
-	http.HandleFunc("/basic/publish", getPublishHandler(manager))
+	mux.HandleFunc("/basic/events", manager.SubscriptionHandler)
+	mux.HandleFunc("/basic/publish", getPublishHandler(manager))
+
+	server := &http.Server{Addr: "127.0.0.1:8081", Handler: mux}
 
 	fmt.Println("Serving webpage at http://127.0.0.1:8081/basic")
-	http.ListenAndServe("127.0.0.1:8081", nil)
+	httpDone := make(chan bool)
+	go func() {
+		if err := server.ListenAndServe(); err != nil {
+			// handle err
+			close(httpDone)
+		}
+		fmt.Println("HI MOM DO YOU SEE ME?") // TODO: remove!
 
-	// We'll never get here as long as http.ListenAndServe starts successfully
-	// because it runs until you kill the program (like pressing Control-C)
-	// Buf if you make a stoppable http server, or want to shut down the
-	// internal longpoll manager for other reasons, you can do so via
-	// Shutdown:
-	manager.Shutdown() // Stops the internal goroutine that provides subscription behavior
-	// Again, calling shutdown is a bit silly here since the goroutines will
-	// exit on main() exit.  But I wanted to show you that it is possible.
+		// TODO: make ShutdownWithTimeout that returns timeout error?
+		fmt.Println("Calling manager shutdown.")
+		sErr := manager.ShutdownWithTimeout(5) // TODO: comment about this
+		if sErr != nil {
+			fmt.Println("Got shutdown error: ", sErr)
+		}
+		fmt.Println("Manager shutdown complete.")
+	}()
+
+	// Setting up signal capturing
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, os.Interrupt)
+
+	// Waiting for SIGINT (pkill -2)
+	<-stop
+
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	if err := server.Shutdown(ctx); err != nil {
+		// TODO: handle err
+		fmt.Printf("Error shutting down: %v\n", err)
+	}
+
+	fmt.Println("waiting for http done")
+	// Wait for ListenAndServe goroutine to close.
+	<-httpDone
+	fmt.Println("all done for real") // TODO: remove me
 }
 
 func getPublishHandler(manager *golongpoll.LongpollManager) func(w http.ResponseWriter, r *http.Request) {
