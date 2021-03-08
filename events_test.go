@@ -14,13 +14,13 @@ func Test_eventBuffer_QueueEvent(t *testing.T) {
 		10, // max buffer size
 		timeToEpochMilliseconds(testStart),
 	}
-	var events = []Event{
+	var events = []*Event{
 		newEventWithTime(testStart.Add(-10*time.Second), "red", "some string data 1"),
 		newEventWithTime(testStart.Add(-5*time.Second), "blue", "some string data 2"),
 		newEventWithTime(testStart, "red", "some string data 3"),
 	}
 	for i := range events {
-		if err := buffer.QueueEvent(&events[i]); err != nil {
+		if err := buffer.QueueEvent(events[i]); err != nil {
 			t.Errorf("Event queue failed when it shouldn't have. Tried to queue: %q", events[i])
 		}
 		// oldestEventTime should be the oldest event in the buffer, which is
@@ -44,7 +44,7 @@ func Test_eventBuffer_QueueEvent(t *testing.T) {
 			t.Errorf("Found non-event type in event buffer at index %d.", eventIndex)
 		}
 		// Make sure is event we think it should be
-		if *event != events[eventIndex] {
+		if event != events[eventIndex] {
 			t.Errorf("Wrong event at index %d.  Expected: %q, Actual %q.",
 				eventIndex, events[eventIndex], event)
 		}
@@ -62,7 +62,7 @@ func Test_eventBuffer_QueueEvent_MaxBufferReached(t *testing.T) {
 		timeToEpochMilliseconds(testStart),
 	}
 	// Create moreThanMax events
-	events := make([]Event, 0)
+	events := make([]*Event, 0)
 	for i := 0; i < moreThanMax; i++ {
 		events = append(events,
 			newEventWithTime(testStart.Add(time.Duration(i)*time.Second),
@@ -73,7 +73,7 @@ func Test_eventBuffer_QueueEvent_MaxBufferReached(t *testing.T) {
 		// NOTE queue should always succeed even when we're adding more than max
 		// buffer size because the buffer will simply truncate the least
 		// recently added events when it's out of space.
-		if err := buffer.QueueEvent(&events[i]); err != nil {
+		if err := buffer.QueueEvent(events[i]); err != nil {
 			t.Errorf(
 				"Event queue failed when it shouldn't have. Tried to queue: %q",
 				events[i])
@@ -100,7 +100,7 @@ func Test_eventBuffer_QueueEvent_MaxBufferReached(t *testing.T) {
 			t.Errorf("Found non-event type in event buffer at index %d.", eventIndex)
 		}
 		// Make sure is event we think it should be
-		if *event != events[eventIndex] {
+		if event != events[eventIndex] {
 			t.Errorf("Wrong event at index %d.  Expected: %q, Actual %q.",
 				eventIndex, events[eventIndex], event)
 		}
@@ -140,7 +140,7 @@ func Test_eventBuffer_GetEventsSince(t *testing.T) {
 	}
 	// Three of the events in our buffer occurred after our since param
 	since := testStart.Add(-9 * time.Second)
-	var events = []Event{
+	var events = []*Event{
 		newEventWithTime(testStart.Add(-12*time.Second), "red", "some string data 1"),
 		newEventWithTime(testStart.Add(-11*time.Second), "blue", "some string data 2"),
 		newEventWithTime(testStart.Add(-8*time.Second), "red", "some string data 3"),
@@ -148,7 +148,7 @@ func Test_eventBuffer_GetEventsSince(t *testing.T) {
 		newEventWithTime(testStart, "red", "some string data 5"),
 	}
 	for i := range events {
-		if err := buffer.QueueEvent(&events[i]); err != nil {
+		if err := buffer.QueueEvent(events[i]); err != nil {
 			t.Errorf("Event queue failed when it shouldn't have. Tried to queue: %q", events[i])
 		}
 	}
@@ -169,7 +169,7 @@ func Test_eventBuffer_GetEventsSince(t *testing.T) {
 	for i := range gotEvents {
 		// i is 0, 1, 2
 		// The event's we expect are events[2], [3], [4]
-		if gotEvents[i] != events[i+2] {
+		if *(gotEvents[i]) != *(events[i+2]) {
 			t.Fatalf("Expected: %q, got: %q", events[i+2], gotEvents[i])
 		}
 	}
@@ -190,7 +190,7 @@ func Test_eventBuffer_GetEventsSince_lastEventUUID(t *testing.T) {
 		timeToEpochMilliseconds(testStart),
 	}
 
-	var events = []Event{
+	var events = []*Event{
 		newEventWithTime(testStart.Add(-3*time.Second), "news", "Cheese is good."),
 		newEventWithTime(testStart.Add(-2*time.Second), "news", "I like cheese."),
 		newEventWithTime(testStart.Add(-2*time.Second), "news", "We are out of cheese."),
@@ -198,7 +198,7 @@ func Test_eventBuffer_GetEventsSince_lastEventUUID(t *testing.T) {
 		newEventWithTime(testStart, "news", "Capital idea!"),
 	}
 	for i := range events {
-		if err := buffer.QueueEvent(&events[i]); err != nil {
+		if err := buffer.QueueEvent(events[i]); err != nil {
 			t.Errorf("Event queue failed when it shouldn't have. Tried to queue: %q", events[i])
 		}
 	}
@@ -337,7 +337,7 @@ func Test_eventBuffer_GetEventsSince_deleteFetchedEvents(t *testing.T) {
 	}
 	// Three of the events in our buffer occurred after our since param
 	since := testStart.Add(-9 * time.Second)
-	var events = []Event{
+	var events = []*Event{
 		newEventWithTime(testStart.Add(-12*time.Second), "red", "some string data 1"),
 		newEventWithTime(testStart.Add(-11*time.Second), "blue", "some string data 2"),
 		newEventWithTime(testStart.Add(-8*time.Second), "red", "some string data 3"),
@@ -345,7 +345,7 @@ func Test_eventBuffer_GetEventsSince_deleteFetchedEvents(t *testing.T) {
 		newEventWithTime(testStart, "red", "some string data 5"),
 	}
 	for i := range events {
-		if err := buffer.QueueEvent(&events[i]); err != nil {
+		if err := buffer.QueueEvent(events[i]); err != nil {
 			t.Errorf("Event queue failed when it shouldn't have. Tried to queue: %q", events[i])
 		}
 	}
@@ -367,7 +367,7 @@ func Test_eventBuffer_GetEventsSince_deleteFetchedEvents(t *testing.T) {
 	for i := range gotEvents {
 		// i is 0, 1, 2
 		// The event's we expect are events[2], [3], [4]
-		if gotEvents[i] != events[i+2] {
+		if *(gotEvents[i]) != *(events[i+2]) {
 			t.Fatalf("Expected: %q, got: %q", events[i+2], gotEvents[i])
 		}
 	}
@@ -385,10 +385,10 @@ func Test_eventBuffer_GetEventsSince_deleteFetchedEvents(t *testing.T) {
 		t.Errorf("buffer had unexpected number of events.  was: %d, expected: %d.",
 			buffer.List.Len(), 2)
 	}
-	if buffer.List.Front().Value.(*Event) != &events[1] {
+	if buffer.List.Front().Value.(*Event) != events[1] {
 		t.Errorf("buffer had unexpected event at front. expected events[1].")
 	}
-	if buffer.List.Front().Next().Value.(*Event) != &events[0] {
+	if buffer.List.Front().Next().Value.(*Event) != events[0] {
 		t.Errorf("buffer had unexpected event at second item. expected events[0].")
 	}
 }
@@ -401,7 +401,7 @@ func Test_eventBuffer_GetEventsSince_AllEvents(t *testing.T) {
 	}
 	// All of the events in the buffer occurred after our since param
 	since := time.Now().Add(-30 * time.Second)
-	var events = []Event{
+	var events = []*Event{
 		newEventWithTime(time.Now().Add(-12*time.Second), "red", "some string data 1"),
 		newEventWithTime(time.Now().Add(-11*time.Second), "blue", "some string data 2"),
 		newEventWithTime(time.Now().Add(-8*time.Second), "red", "some string data 3"),
@@ -409,7 +409,7 @@ func Test_eventBuffer_GetEventsSince_AllEvents(t *testing.T) {
 		newEventWithTime(time.Now(), "red", "some string data 5"),
 	}
 	for i := range events {
-		if err := buffer.QueueEvent(&events[i]); err != nil {
+		if err := buffer.QueueEvent(events[i]); err != nil {
 			t.Errorf("Event queue failed when it shouldn't have. Tried to queue: %q", events[i])
 		}
 	}
@@ -424,7 +424,7 @@ func Test_eventBuffer_GetEventsSince_AllEvents(t *testing.T) {
 	}
 	// Confirm the event's we got are the ones we expect:
 	for i := range gotEvents {
-		if gotEvents[i] != events[i] {
+		if *(gotEvents[i]) != *(events[i]) {
 			t.Fatalf("Expected: %q, got: %q", events[i+2], gotEvents[i])
 		}
 	}
@@ -438,7 +438,7 @@ func Test_eventBuffer_GetEventsSince_NoEvents(t *testing.T) {
 	}
 	// None of the events in the buffer occurred after our since param
 	since := time.Now()
-	var events = []Event{
+	var events = []*Event{
 		newEventWithTime(time.Now().Add(-12*time.Second), "red", "some string data 1"),
 		newEventWithTime(time.Now().Add(-11*time.Second), "blue", "some string data 2"),
 		newEventWithTime(time.Now().Add(-8*time.Second), "red", "some string data 3"),
@@ -446,7 +446,7 @@ func Test_eventBuffer_GetEventsSince_NoEvents(t *testing.T) {
 		newEventWithTime(time.Now().Add(-3*time.Second), "red", "some string data 5"),
 	}
 	for i := range events {
-		if err := buffer.QueueEvent(&events[i]); err != nil {
+		if err := buffer.QueueEvent(events[i]); err != nil {
 			t.Errorf("Event queue failed when it shouldn't have. Tried to queue: %q", events[i])
 		}
 	}
@@ -541,7 +541,7 @@ func Test_eventBuffer_DeleteEventsOlderThan(t *testing.T) {
 		10, // max buffer size
 		timeToEpochMilliseconds(testStart),
 	}
-	var events = []Event{
+	var events = []*Event{
 		newEventWithTime(testStart.Add(-12*time.Second), "red", "some string data 1"),
 		newEventWithTime(testStart.Add(-11*time.Second), "blue", "some string data 2"),
 		newEventWithTime(testStart.Add(-8*time.Second), "red", "some string data 3"),
@@ -549,7 +549,7 @@ func Test_eventBuffer_DeleteEventsOlderThan(t *testing.T) {
 		newEventWithTime(testStart, "red", "some string data 5"),
 	}
 	for i := range events {
-		if err := buffer.QueueEvent(&events[i]); err != nil {
+		if err := buffer.QueueEvent(events[i]); err != nil {
 			t.Errorf("Event queue failed when it shouldn't have. Tried to queue: %q", events[i])
 		}
 	}
