@@ -31,7 +31,7 @@ type FilePersistor struct {
 	// channel for incoming published events.
 	// To avoid blocking calling LongpollManager when it calls
 	// OnPublish, we send events to channel for processing in a separate goroutine.
-	publishedEvents chan golongpoll.Event
+	publishedEvents chan *golongpoll.Event
 	// Channel used to signal when done flushing to disk on shutdown.
 	shutdownDone chan bool
 }
@@ -57,7 +57,7 @@ func NewFilePersistor(filename string, writeBufferSize int, writeFlushPeriodSeco
 	}
 	f.Close()
 
-	eventsIn := make(chan golongpoll.Event, 100)
+	eventsIn := make(chan *golongpoll.Event, 100)
 
 	fp := FilePersistor{
 		filename:                filename,
@@ -69,9 +69,9 @@ func NewFilePersistor(filename string, writeBufferSize int, writeFlushPeriodSeco
 	return &fp, nil
 }
 
-func (fp *FilePersistor) OnLongpollStart() <-chan golongpoll.Event {
+func (fp *FilePersistor) OnLongpollStart() <-chan *golongpoll.Event {
 	// return a channel to send initial events to
-	ch := make(chan golongpoll.Event)
+	ch := make(chan *golongpoll.Event)
 	// populate input events channel in own goroutine
 	go fp.getOnStartInputEvents(ch)
 	// launch the FilePersistor's run goroutine. This will read from (a different) channel to handle OnPublish callbacks.
@@ -79,7 +79,7 @@ func (fp *FilePersistor) OnLongpollStart() <-chan golongpoll.Event {
 	return ch
 }
 
-func (fp *FilePersistor) OnPublish(event golongpoll.Event) {
+func (fp *FilePersistor) OnPublish(event *golongpoll.Event) {
 	// Event handled in a separate goroutine so calling LongpollManager doesn't block
 	// waiting for us to write to file.
 	fp.publishedEvents <- event
@@ -96,7 +96,7 @@ func (fp *FilePersistor) OnShutdown() {
 	<-fp.shutdownDone
 }
 
-func (fp *FilePersistor) getOnStartInputEvents(ch chan golongpoll.Event) {
+func (fp *FilePersistor) getOnStartInputEvents(ch chan *golongpoll.Event) {
 	f, err := os.Open(fp.filename)
 	if err != nil {
 		// TODO: way to return error? cause longpoll manager to not start?
@@ -124,7 +124,7 @@ func (fp *FilePersistor) getOnStartInputEvents(ch chan golongpoll.Event) {
 			continue
 		} else {
 			fmt.Printf("DEBUG >> ADDING ON START EVENT ....  boom!")
-			ch <- event
+			ch <- &event
 		}
 	}
 	if err := scanner.Err(); err != nil {

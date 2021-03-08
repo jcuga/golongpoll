@@ -47,7 +47,7 @@ const (
 // channels, you can simply create multiple LongpollManagers.
 type LongpollManager struct {
 	subManager          *subscriptionManager
-	eventsIn            chan<- Event
+	eventsIn            chan<- *Event
 	stopSignal          chan<- bool
 	SubscriptionHandler func(w http.ResponseWriter, r *http.Request)
 }
@@ -56,8 +56,8 @@ type LongpollManager struct {
 // For example: addons/persistence/file.go provides a way to
 // persist events to file to reuse across LongpollManager runs.
 type AddOn interface {
-	OnLongpollStart() <-chan Event
-	OnPublish(Event)
+	OnLongpollStart() <-chan *Event
+	OnPublish(*Event)
 	OnShutdown()
 }
 
@@ -78,7 +78,7 @@ func (m *LongpollManager) Publish(category string, data interface{}) error {
 		return err
 	}
 
-	m.eventsIn <- Event{timeToEpochMilliseconds(time.Now()), category, data, u}
+	m.eventsIn <- &Event{timeToEpochMilliseconds(time.Now()), category, data, u}
 	return nil
 }
 
@@ -177,16 +177,16 @@ func StartLongpoll(opts Options) (*LongpollManager, error) {
 		return nil, errors.New("options.EventTimeToLiveSeconds must be at least 1 or the constant longpoll.FOREVER")
 	}
 	channelSize := 100
-	clientRequestChan := make(chan clientSubscription, channelSize)
-	clientTimeoutChan := make(chan clientCategoryPair, channelSize)
-	events := make(chan Event, channelSize)
+	clientRequestChan := make(chan *clientSubscription, channelSize)
+	clientTimeoutChan := make(chan *clientCategoryPair, channelSize)
+	events := make(chan *Event, channelSize)
 	// never has a send, only a close, so no larger capacity needed:
 	quit := make(chan bool, 1)
 	subManager := subscriptionManager{
 		clientSubscriptions:            clientRequestChan,
 		ClientTimeouts:                 clientTimeoutChan,
 		Events:                         events,
-		ClientSubChannels:              make(map[string]map[uuid.UUID]chan<- []Event),
+		ClientSubChannels:              make(map[string]map[uuid.UUID]chan<- []*Event),
 		SubEventBuffer:                 make(map[string]*expiringBuffer),
 		Quit:                           quit,
 		shutdownDone:                   make(chan bool, 1),
@@ -225,7 +225,7 @@ func StartLongpoll(opts Options) (*LongpollManager, error) {
 			event, ok := <-startChan
 			if ok {
 				if event.Timestamp > cutoffTime {
-					subManager.handleNewEvent(&event)
+					subManager.handleNewEvent(event)
 				}
 			} else {
 				// channel closed, we're done populating
@@ -256,7 +256,7 @@ type clientSubscription struct {
 	// we channel arrays of events since we need to send everything a client
 	// cares about in a single channel send.  This makes channel receives a
 	// one shot deal.
-	Events chan []Event
+	Events chan []*Event
 }
 
 func newclientSubscription(subscriptionCategory string, lastEventTime time.Time, lastEventID *uuid.UUID) (*clientSubscription, error) {
@@ -268,14 +268,14 @@ func newclientSubscription(subscriptionCategory string, lastEventTime time.Time,
 		clientCategoryPair{u, subscriptionCategory},
 		lastEventTime,
 		lastEventID,
-		make(chan []Event, 1), // TODO: Event or *Event here?
+		make(chan []*Event, 1),
 	}
 	return &subscription, nil
 }
 
 // get web handler that has closure around sub chanel and clientTimeout channnel
-func getLongPollSubscriptionHandler(maxTimeoutSeconds int, subscriptionRequests chan clientSubscription,
-	clientTimeouts chan<- clientCategoryPair, loggingEnabled bool) func(w http.ResponseWriter, r *http.Request) {
+func getLongPollSubscriptionHandler(maxTimeoutSeconds int, subscriptionRequests chan *clientSubscription,
+	clientTimeouts chan<- *clientCategoryPair, loggingEnabled bool) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		timeout, err := strconv.Atoi(r.URL.Query().Get("timeout"))
 		if loggingEnabled {
@@ -359,7 +359,7 @@ func getLongPollSubscriptionHandler(maxTimeoutSeconds int, subscriptionRequests 
 			io.WriteString(w, "{\"error\": \"Error creating new Subscription.\"}")
 			return
 		}
-		subscriptionRequests <- *subscription
+		subscriptionRequests <- subscription
 		// Listens for connection close and un-register subscription in the
 		// event that a client crashes or the connection goes down.  We don't
 		// need to wait around to fulfill a subscription if no one is going to
@@ -369,7 +369,7 @@ func getLongPollSubscriptionHandler(maxTimeoutSeconds int, subscriptionRequests 
 		case <-time.After(time.Duration(timeout) * time.Second):
 			// Lets the subscription manager know it can discard this request's
 			// channel.
-			clientTimeouts <- subscription.clientCategoryPair
+			clientTimeouts <- &subscription.clientCategoryPair
 			timeoutResp := makeTimeoutResponse(time.Now())
 			if jsonData, err := json.Marshal(timeoutResp); err == nil {
 				io.WriteString(w, string(jsonData))
@@ -380,7 +380,7 @@ func getLongPollSubscriptionHandler(maxTimeoutSeconds int, subscriptionRequests 
 			// Consume event.  Subscription manager will automatically discard
 			// this client's channel upon sending event
 			// NOTE: event is actually []Event
-			if jsonData, err := json.Marshal(eventResponse{&events}); err == nil {
+			if jsonData, err := json.Marshal(eventResponse{events}); err == nil {
 				io.WriteString(w, string(jsonData))
 			} else {
 				io.WriteString(w, "{\"error\": \"json marshaller failed\"}")
@@ -389,7 +389,7 @@ func getLongPollSubscriptionHandler(maxTimeoutSeconds int, subscriptionRequests 
 			// Client connection closed before any events occurred and before
 			// the timeout was exceeded.  Tell manager to forget about this
 			// client.
-			clientTimeouts <- subscription.clientCategoryPair
+			clientTimeouts <- &subscription.clientCategoryPair
 		}
 	}
 }
@@ -411,12 +411,12 @@ type clientCategoryPair struct {
 }
 
 type subscriptionManager struct {
-	clientSubscriptions chan clientSubscription
-	ClientTimeouts      <-chan clientCategoryPair
-	Events              <-chan Event
+	clientSubscriptions chan *clientSubscription
+	ClientTimeouts      <-chan *clientCategoryPair
+	Events              <-chan *Event
 	// Contains all client sub channels grouped first by sub id then by
 	// client uuid
-	ClientSubChannels map[string]map[uuid.UUID]chan<- []Event
+	ClientSubChannels map[string]map[uuid.UUID]chan<- []*Event
 	SubEventBuffer    map[string]*expiringBuffer
 	// channel to inform manager to stop running
 	Quit           <-chan bool
@@ -457,17 +457,17 @@ func (sm *subscriptionManager) run() error {
 		// So instead of introducing mutexes we have this uglier manual time check calls
 		select {
 		case newClient := <-sm.clientSubscriptions:
-			sm.handleNewClient(&newClient)
+			sm.handleNewClient(newClient)
 			sm.seeIfTimeToPurgeStaleCategories()
 		case disconnected := <-sm.ClientTimeouts:
-			sm.handleClientDisconnect(&disconnected)
+			sm.handleClientDisconnect(disconnected)
 			sm.seeIfTimeToPurgeStaleCategories()
 		case event := <-sm.Events:
 			// Optional hook on publish
 			if sm.AddOn != nil {
 				sm.AddOn.OnPublish(event)
 			}
-			sm.handleNewEvent(&event)
+			sm.handleNewEvent(event)
 			sm.seeIfTimeToPurgeStaleCategories()
 		case <-time.After(time.Duration(5) * time.Second):
 			sm.seeIfTimeToPurgeStaleCategories()
@@ -535,7 +535,7 @@ func (sm *subscriptionManager) handleNewClient(newClient *clientSubscription) er
 		categoryClients, found := sm.ClientSubChannels[newClient.SubscriptionCategory]
 		if !found {
 			// first request for this sub category, add client chan map entry
-			categoryClients = make(map[uuid.UUID]chan<- []Event)
+			categoryClients = make(map[uuid.UUID]chan<- []*Event)
 			sm.ClientSubChannels[newClient.SubscriptionCategory] = categoryClients
 		}
 		if sm.LoggingEnabled {
@@ -598,7 +598,7 @@ func (sm *subscriptionManager) handleNewEvent(newEvent *Event) error {
 			if sm.LoggingEnabled {
 				log.Printf("SubscriptionManager: sending event to client: %s\n", clientUUID.String())
 			}
-			clientChan <- []Event{*newEvent}
+			clientChan <- []*Event{newEvent}
 		}
 		// Remove all client subscriptions since we just sent all the
 		// clients an event.  In longpolling, subscriptions only last

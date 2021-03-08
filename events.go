@@ -28,7 +28,7 @@ type Event struct {
 
 // eventResponse is the json response that carries longpoll events.
 type eventResponse struct {
-	Events *[]Event `json:"events"`
+	Events []*Event `json:"events"`
 }
 
 // eventBuffer is a buffer of Events that adds new events to the front/root and
@@ -51,18 +51,18 @@ type eventBuffer struct {
 	oldestEventTime int64
 }
 
-func newEvent(category string, data interface{}) Event {
+func newEvent(category string, data interface{}) *Event {
 	return newEventWithTime(time.Now(), category, data)
 }
 
-func newEventWithTime(t time.Time, category string, data interface{}) Event {
+func newEventWithTime(t time.Time, category string, data interface{}) *Event {
 	u, err := uuid.NewV4()
 
 	if err != nil {
 		log.Fatalf("Error generating uuid: %q", err)
 	}
 
-	return Event{timeToEpochMilliseconds(t), category, data, u}
+	return &Event{timeToEpochMilliseconds(t), category, data, u}
 }
 
 // QueueEvent adds a new longpoll Event to the front of our buffer and removes
@@ -99,8 +99,8 @@ func (eb *eventBuffer) QueueEvent(event *Event) error {
 // Optionally removes returned events from the eventBuffer if told to do so by
 // deleteFetchedEvents argument.
 func (eb *eventBuffer) GetEventsSince(since time.Time,
-	deleteFetchedEvents bool, lastEventUUID *uuid.UUID) ([]Event, error) {
-	events := make([]Event, 0)
+	deleteFetchedEvents bool, lastEventUUID *uuid.UUID) ([]*Event, error) {
+	events := make([]*Event, 0)
 	// NOTE: events are bufferd with the most recent event at the front.
 	// So we want to start our search at the front of the buffer and stop
 	// searching once we've reached events that are older than the 'since'
@@ -144,7 +144,7 @@ func (eb *eventBuffer) GetEventsSince(since time.Time,
 			}
 			// we already know this event is after 'since'
 			events = append(events,
-				Event{event.Timestamp, event.Category, event.Data, event.ID})
+				&Event{event.Timestamp, event.Category, event.Data, event.ID})
 			// Advance iteration before List.Remove() invalidates element.prev
 			prev = element.Prev()
 			// Now safely remove from list if told to do so:

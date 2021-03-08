@@ -621,14 +621,14 @@ func Test_LongpollManager_WebClient_HasEvents(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &eventResponse); err != nil {
 		t.Errorf("Failed to decode json: %q", err)
 	}
-	if len(*eventResponse.Events) != 1 {
-		t.Errorf("Unexpected number of events.  Expected: %d, got: %d", 1, len(*eventResponse.Events))
+	if len(eventResponse.Events) != 1 {
+		t.Errorf("Unexpected number of events.  Expected: %d, got: %d", 1, len(eventResponse.Events))
 	}
-	if (*eventResponse.Events)[0].Category != "veggies" {
-		t.Errorf("Unexpected category.  Expected: %q, got: %q", "veggies", (*eventResponse.Events)[0].Category)
+	if (eventResponse.Events)[0].Category != "veggies" {
+		t.Errorf("Unexpected category.  Expected: %q, got: %q", "veggies", (eventResponse.Events)[0].Category)
 	}
-	if (*eventResponse.Events)[0].Data != "corn" {
-		t.Errorf("Unexpected data.  Expected: %q, got: %q", "corn", (*eventResponse.Events)[0].Data)
+	if (eventResponse.Events)[0].Data != "corn" {
+		t.Errorf("Unexpected data.  Expected: %q, got: %q", "corn", (eventResponse.Events)[0].Data)
 	}
 
 	// Make a new subscription request.
@@ -666,17 +666,17 @@ func Test_LongpollManager_WebClient_HasEvents(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &eventResponse); err != nil {
 		t.Errorf("Failed to decode json: %q", err)
 	}
-	if len(*eventResponse.Events) != 1 {
-		t.Errorf("Unexpected number of events.  Expected: %d, got: %d", 1, len(*eventResponse.Events))
+	if len(eventResponse.Events) != 1 {
+		t.Errorf("Unexpected number of events.  Expected: %d, got: %d", 1, len(eventResponse.Events))
 	}
-	if (*eventResponse.Events)[0].Category != "veggies" {
-		t.Errorf("Unexpected category.  Expected: %q, got: %q", "veggies", (*eventResponse.Events)[0].Category)
+	if (eventResponse.Events)[0].Category != "veggies" {
+		t.Errorf("Unexpected category.  Expected: %q, got: %q", "veggies", (eventResponse.Events)[0].Category)
 	}
-	if (*eventResponse.Events)[0].Data != "corn" {
-		t.Errorf("Unexpected data.  Expected: %q, got: %q", "corn", (*eventResponse.Events)[0].Data)
+	if (eventResponse.Events)[0].Data != "corn" {
+		t.Errorf("Unexpected data.  Expected: %q, got: %q", "corn", (eventResponse.Events)[0].Data)
 	}
 
-	firstEventTime := (*eventResponse.Events)[0].Timestamp
+	firstEventTime := (eventResponse.Events)[0].Timestamp
 	manager.Publish("veggies", "carrot")
 	time.Sleep(50 * time.Millisecond) // allow yield for goroutine channel reads
 
@@ -691,14 +691,14 @@ func Test_LongpollManager_WebClient_HasEvents(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &eventResponse); err != nil {
 		t.Errorf("Failed to decode json: %q", err)
 	}
-	if len(*eventResponse.Events) != 1 {
-		t.Errorf("Unexpected number of events.  Expected: %d, got: %d", 1, len(*eventResponse.Events))
+	if len(eventResponse.Events) != 1 {
+		t.Errorf("Unexpected number of events.  Expected: %d, got: %d", 1, len(eventResponse.Events))
 	}
-	if (*eventResponse.Events)[0].Category != "veggies" {
-		t.Errorf("Unexpected category.  Expected: %q, got: %q", "veggies", (*eventResponse.Events)[0].Category)
+	if (eventResponse.Events)[0].Category != "veggies" {
+		t.Errorf("Unexpected category.  Expected: %q, got: %q", "veggies", (eventResponse.Events)[0].Category)
 	}
-	if (*eventResponse.Events)[0].Data != "carrot" {
-		t.Errorf("Unexpected data.  Expected: %q, got: %q", "carrot", (*eventResponse.Events)[0].Data)
+	if (eventResponse.Events)[0].Data != "carrot" {
+		t.Errorf("Unexpected data.  Expected: %q, got: %q", "carrot", (eventResponse.Events)[0].Data)
 	}
 
 	// Confirm we get both events when asking for any events since start of test run
@@ -712,14 +712,14 @@ func Test_LongpollManager_WebClient_HasEvents(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &eventResponse); err != nil {
 		t.Errorf("Failed to decode json: %q", err)
 	}
-	if len(*eventResponse.Events) != 2 {
-		t.Errorf("Unexpected number of events.  Expected: %d, got: %d", 2, len(*eventResponse.Events))
+	if len(eventResponse.Events) != 2 {
+		t.Errorf("Unexpected number of events.  Expected: %d, got: %d", 2, len(eventResponse.Events))
 	}
-	if (*eventResponse.Events)[0].Data != "corn" {
-		t.Errorf("Unexpected data.  Expected: %q, got: %q", "corn", (*eventResponse.Events)[0].Data)
+	if (eventResponse.Events)[0].Data != "corn" {
+		t.Errorf("Unexpected data.  Expected: %q, got: %q", "corn", (eventResponse.Events)[0].Data)
 	}
-	if (*eventResponse.Events)[1].Data != "carrot" {
-		t.Errorf("Unexpected data.  Expected: %q, got: %q", "carrot", (*eventResponse.Events)[0].Data)
+	if (eventResponse.Events)[1].Data != "carrot" {
+		t.Errorf("Unexpected data.  Expected: %q, got: %q", "carrot", (eventResponse.Events)[0].Data)
 	}
 
 	// Don't forget to kill our pubsub manager's run goroutine
@@ -761,20 +761,20 @@ func Test_LongpollManager_WebClient_HasBufferedEvents(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &eventResponse); err != nil {
 		t.Errorf("Failed to decode json: %q", err)
 	}
-	if len(*eventResponse.Events) != 2 {
-		t.Errorf("Unexpected number of events.  Expected: %d, got: %d", 2, len(*eventResponse.Events))
+	if len(eventResponse.Events) != 2 {
+		t.Errorf("Unexpected number of events.  Expected: %d, got: %d", 2, len(eventResponse.Events))
 	}
-	if (*eventResponse.Events)[0].Category != "veggies" {
-		t.Errorf("Unexpected category.  Expected: %q, got: %q", "veggies", (*eventResponse.Events)[0].Category)
+	if (eventResponse.Events)[0].Category != "veggies" {
+		t.Errorf("Unexpected category.  Expected: %q, got: %q", "veggies", (eventResponse.Events)[0].Category)
 	}
-	if (*eventResponse.Events)[0].Data != "broccoli" {
-		t.Errorf("Unexpected data.  Expected: %q, got: %q", "broccoli", (*eventResponse.Events)[0].Data)
+	if (eventResponse.Events)[0].Data != "broccoli" {
+		t.Errorf("Unexpected data.  Expected: %q, got: %q", "broccoli", (eventResponse.Events)[0].Data)
 	}
-	if (*eventResponse.Events)[1].Category != "veggies" {
-		t.Errorf("Unexpected category.  Expected: %q, got: %q", "veggies", (*eventResponse.Events)[1].Category)
+	if (eventResponse.Events)[1].Category != "veggies" {
+		t.Errorf("Unexpected category.  Expected: %q, got: %q", "veggies", (eventResponse.Events)[1].Category)
 	}
-	if (*eventResponse.Events)[1].Data != "corn" {
-		t.Errorf("Unexpected data.  Expected: %q, got: %q", "corn", (*eventResponse.Events)[1].Data)
+	if (eventResponse.Events)[1].Data != "corn" {
+		t.Errorf("Unexpected data.  Expected: %q, got: %q", "corn", (eventResponse.Events)[1].Data)
 	}
 
 	// Don't forget to kill our pubsub manager's run goroutine
@@ -1221,14 +1221,14 @@ func deleteOnFetchTest(manager *LongpollManager, t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &eventResponse); err != nil {
 		t.Errorf("Failed to decode json: %q", err)
 	}
-	if len(*eventResponse.Events) != 1 {
-		t.Errorf("Unexpected number of events.  Expected: %d, got: %d", 1, len(*eventResponse.Events))
+	if len(eventResponse.Events) != 1 {
+		t.Errorf("Unexpected number of events.  Expected: %d, got: %d", 1, len(eventResponse.Events))
 	}
-	if (*eventResponse.Events)[0].Category != "fruit" {
-		t.Errorf("Unexpected category.  Expected: %q, got: %q", "fruit", (*eventResponse.Events)[0].Category)
+	if (eventResponse.Events)[0].Category != "fruit" {
+		t.Errorf("Unexpected category.  Expected: %q, got: %q", "fruit", (eventResponse.Events)[0].Category)
 	}
-	if (*eventResponse.Events)[0].Data != "orange" {
-		t.Errorf("Unexpected data.  Expected: %q, got: %q", "orange", (*eventResponse.Events)[0].Data)
+	if (eventResponse.Events)[0].Data != "orange" {
+		t.Errorf("Unexpected data.  Expected: %q, got: %q", "orange", (eventResponse.Events)[0].Data)
 	}
 	// Also confirm that orange is now gone out of the buffer
 	if len(sm.SubEventBuffer) != 2 {
@@ -1284,20 +1284,20 @@ func deleteOnFetchTest(manager *LongpollManager, t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &eventResponse); err != nil {
 		t.Errorf("Failed to decode json: %q", err)
 	}
-	if len(*eventResponse.Events) != 2 {
-		t.Errorf("Unexpected number of events.  Expected: %d, got: %d", 2, len(*eventResponse.Events))
+	if len(eventResponse.Events) != 2 {
+		t.Errorf("Unexpected number of events.  Expected: %d, got: %d", 2, len(eventResponse.Events))
 	}
-	if (*eventResponse.Events)[0].Category != "veggie" {
-		t.Errorf("Unexpected category.  Expected: %q, got: %q", "veggie", (*eventResponse.Events)[0].Category)
+	if (eventResponse.Events)[0].Category != "veggie" {
+		t.Errorf("Unexpected category.  Expected: %q, got: %q", "veggie", (eventResponse.Events)[0].Category)
 	}
-	if (*eventResponse.Events)[0].Data != "corn" {
-		t.Errorf("Unexpected data.  Expected: %q, got: %q", "corn", (*eventResponse.Events)[0].Data)
+	if (eventResponse.Events)[0].Data != "corn" {
+		t.Errorf("Unexpected data.  Expected: %q, got: %q", "corn", (eventResponse.Events)[0].Data)
 	}
-	if (*eventResponse.Events)[1].Category != "veggie" {
-		t.Errorf("Unexpected category.  Expected: %q, got: %q", "veggie", (*eventResponse.Events)[0].Category)
+	if (eventResponse.Events)[1].Category != "veggie" {
+		t.Errorf("Unexpected category.  Expected: %q, got: %q", "veggie", (eventResponse.Events)[0].Category)
 	}
-	if (*eventResponse.Events)[1].Data != "carrot" {
-		t.Errorf("Unexpected data.  Expected: %q, got: %q", "carrot", (*eventResponse.Events)[0].Data)
+	if (eventResponse.Events)[1].Data != "carrot" {
+		t.Errorf("Unexpected data.  Expected: %q, got: %q", "carrot", (eventResponse.Events)[0].Data)
 	}
 	time.Sleep(50 * time.Millisecond)
 	if len(sm.SubEventBuffer) != 1 {
@@ -1397,14 +1397,14 @@ func Test_LongpollManager_DeleteOnFetch_SkipBuffering(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &eventResponse); err != nil {
 		t.Errorf("Failed to decode json: %q", err)
 	}
-	if len(*eventResponse.Events) != 1 {
-		t.Errorf("Unexpected number of events.  Expected: %d, got: %d", 1, len(*eventResponse.Events))
+	if len(eventResponse.Events) != 1 {
+		t.Errorf("Unexpected number of events.  Expected: %d, got: %d", 1, len(eventResponse.Events))
 	}
-	if (*eventResponse.Events)[0].Category != "fruit" {
-		t.Errorf("Unexpected category.  Expected: %q, got: %q", "fruit", (*eventResponse.Events)[0].Category)
+	if (eventResponse.Events)[0].Category != "fruit" {
+		t.Errorf("Unexpected category.  Expected: %q, got: %q", "fruit", (eventResponse.Events)[0].Category)
 	}
-	if (*eventResponse.Events)[0].Data != "peach" {
-		t.Errorf("Unexpected data.  Expected: %q, got: %q", "peach", (*eventResponse.Events)[0].Data)
+	if (eventResponse.Events)[0].Data != "peach" {
+		t.Errorf("Unexpected data.  Expected: %q, got: %q", "peach", (eventResponse.Events)[0].Data)
 	}
 	// Ensure nothing was buffered:
 	if len(sm.SubEventBuffer) != 0 {
@@ -1589,11 +1589,11 @@ func Test_MultipleConsecutivePublishedEvents(t *testing.T) {
 		t.Errorf("Failed to decode json: %q", err)
 	}
 
-	if len(*eventResponse.Events) != 1 {
-		t.Errorf("Unexpected number of events.  Expected: %d, got: %d", 1, len(*eventResponse.Events))
+	if len(eventResponse.Events) != 1 {
+		t.Errorf("Unexpected number of events.  Expected: %d, got: %d", 1, len(eventResponse.Events))
 	}
 
-	firstEvent := (*eventResponse.Events)[0]
+	firstEvent := (eventResponse.Events)[0]
 	if firstEvent.Category != "beer" {
 		t.Errorf("Unexpected category.  Expected: %q, got: %q", "beer", firstEvent.Category)
 	}
@@ -1615,12 +1615,12 @@ func Test_MultipleConsecutivePublishedEvents(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &eventResponse); err != nil {
 		t.Errorf("Failed to decode json: %q", err)
 	}
-	if len(*eventResponse.Events) != 2 {
-		t.Fatalf("Unexpected number of events.  Expected: %d, got: %d", 2, len(*eventResponse.Events))
+	if len(eventResponse.Events) != 2 {
+		t.Fatalf("Unexpected number of events.  Expected: %d, got: %d", 2, len(eventResponse.Events))
 	}
 
-	secondEvent := (*eventResponse.Events)[0]
-	thirdEvent := (*eventResponse.Events)[1]
+	secondEvent := (eventResponse.Events)[0]
+	thirdEvent := (eventResponse.Events)[1]
 
 	if secondEvent.Category != "beer" {
 		t.Errorf("Unexpected category.  Expected: %q, got: %q", "beer", secondEvent.Category)
@@ -1655,11 +1655,11 @@ func Test_MultipleConsecutivePublishedEvents(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &eventResponse); err != nil {
 		t.Errorf("Failed to decode json: %q", err)
 	}
-	if len(*eventResponse.Events) != 1 {
-		t.Fatalf("Unexpected number of events.  Expected: %d, got: %d", 1, len(*eventResponse.Events))
+	if len(eventResponse.Events) != 1 {
+		t.Fatalf("Unexpected number of events.  Expected: %d, got: %d", 1, len(eventResponse.Events))
 	}
 
-	fourthEvent := (*eventResponse.Events)[0]
+	fourthEvent := (eventResponse.Events)[0]
 
 	if fourthEvent.Category != "beer" {
 		t.Errorf("Unexpected category.  Expected: %q, got: %q", "beer", fourthEvent.Category)
