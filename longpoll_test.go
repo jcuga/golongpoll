@@ -838,7 +838,7 @@ func Test_LongpollManager_StartLongpoll_Options(t *testing.T) {
 		LoggingEnabled:            true,
 		MaxLongpollTimeoutSeconds: 120,
 		MaxEventBufferSize:        100,
-		EventTimeToLiveSeconds:    FOREVER,
+		EventTimeToLiveSeconds:    forever,
 	}); err != nil {
 		t.Errorf("Unxpected error when calling StartLongpoll with valid options")
 	} else {
@@ -853,7 +853,7 @@ func Test_LongpollManager_StartLongpoll_Options(t *testing.T) {
 	}); err != nil {
 		t.Errorf("Unxpected error when calling StartLongpoll with valid options")
 	} else {
-		if manager.subManager.EventTimeToLiveSeconds != FOREVER {
+		if manager.subManager.EventTimeToLiveSeconds != forever {
 			t.Errorf("Expected default of FOREVER when EventTimeToLiveSeconds is 0.  instead: %d",
 				manager.subManager.EventTimeToLiveSeconds)
 		}
@@ -870,7 +870,7 @@ func Test_LongpollManager_StartLongpoll_Options(t *testing.T) {
 	}); err != nil {
 		t.Errorf("Unxpected error when calling StartLongpoll with valid options")
 	} else {
-		if manager.subManager.EventTimeToLiveSeconds != FOREVER {
+		if manager.subManager.EventTimeToLiveSeconds != forever {
 			t.Errorf("Expected default of FOREVER when EventTimeToLiveSeconds is 0.  instead: %d",
 				manager.subManager.EventTimeToLiveSeconds)
 		}
@@ -897,7 +897,7 @@ func Test_LongpollManager_StartLongpoll_Options(t *testing.T) {
 	if manager, err := StartLongpoll(Options{}); err != nil {
 		t.Errorf("Unxpected error when calling StartLongpoll with valid options")
 	} else {
-		if manager.subManager.EventTimeToLiveSeconds != FOREVER {
+		if manager.subManager.EventTimeToLiveSeconds != forever {
 			t.Errorf("Expected default of FOREVER when EventTimeToLiveSeconds is 0.  instead: %d",
 				manager.subManager.EventTimeToLiveSeconds)
 		}
@@ -1156,7 +1156,7 @@ func deleteOnFetchTest(manager *LongpollManager, t *testing.T) {
 		t.Errorf("Unexpected category-to-buffer map size.  was: %d, expected %d",
 			len(sm.SubEventBuffer), 0)
 	}
-	if sm.EventTimeToLiveSeconds != FOREVER && sm.bufferPriorityQueue.Len() != 0 {
+	if sm.EventTimeToLiveSeconds != forever && sm.bufferPriorityQueue.Len() != 0 {
 		t.Errorf("Unexpected heap size.  was: %d, expected: %d", sm.bufferPriorityQueue.Len(), 0)
 	}
 	manager.Publish("fruit", "apple")
@@ -1186,14 +1186,14 @@ func deleteOnFetchTest(manager *LongpollManager, t *testing.T) {
 		t.Errorf("Unexpected number of veggie events.  was: %d, expected %d",
 			veggieBuffer.eventBufferPtr.List.Len(), 2)
 	}
-	if sm.EventTimeToLiveSeconds != FOREVER && sm.bufferPriorityQueue.Len() != 2 {
+	if sm.EventTimeToLiveSeconds != forever && sm.bufferPriorityQueue.Len() != 2 {
 		t.Errorf("Unexpected heap size.  was: %d, expected: %d", sm.bufferPriorityQueue.Len(), 2)
 	}
 	// Confirm top of heap is the fruit category since fruit is the category
 	// with the oldest last-event
 	var priorityBeforeRemoval int64
 	// Only check heap if we're using it.  When no TTL, heap is not used.
-	if sm.EventTimeToLiveSeconds != FOREVER {
+	if sm.EventTimeToLiveSeconds != forever {
 		if priority, peekErr := sm.bufferPriorityQueue.peekTopPriority(); peekErr != nil {
 			t.Errorf("Unexpected error checking top priority: %v", peekErr)
 		} else {
@@ -1250,10 +1250,10 @@ func deleteOnFetchTest(manager *LongpollManager, t *testing.T) {
 		t.Errorf("Unexpected number of veggie events.  was: %d, expected %d",
 			veggieBuffer.eventBufferPtr.List.Len(), 2)
 	}
-	if sm.EventTimeToLiveSeconds != FOREVER && sm.bufferPriorityQueue.Len() != 2 {
+	if sm.EventTimeToLiveSeconds != forever && sm.bufferPriorityQueue.Len() != 2 {
 		t.Errorf("Unexpected heap size.  was: %d, expected: %d", sm.bufferPriorityQueue.Len(), 2)
 	}
-	if sm.EventTimeToLiveSeconds != FOREVER {
+	if sm.EventTimeToLiveSeconds != forever {
 		// NOTE: the heap priority doesn't change when an event is removed due
 		// to the DeleteEventAfterFirstRetrieval setting.  This is by design because
 		// it is complicated to know what to update the priority to, and it doesn't
@@ -1316,7 +1316,7 @@ func deleteOnFetchTest(manager *LongpollManager, t *testing.T) {
 		t.Errorf("Unexpected event left in fruit buffer.  was: %s, expected: %s.",
 			fruitBuffer.eventBufferPtr.List.Front().Value.(*Event).Data.(string), "apple")
 	}
-	if sm.EventTimeToLiveSeconds != FOREVER {
+	if sm.EventTimeToLiveSeconds != forever {
 		// Heap still not changed for same reasons as before
 		if priority, peekErr := sm.bufferPriorityQueue.peekTopPriority(); peekErr != nil {
 			t.Errorf("Unexpected error checking top priority: %v", peekErr)
@@ -1345,7 +1345,7 @@ func Test_LongpollManager_DeleteOnFetch_ForeverTTL(t *testing.T) {
 		LoggingEnabled:                 true,
 		MaxLongpollTimeoutSeconds:      120,
 		MaxEventBufferSize:             100,
-		EventTimeToLiveSeconds:         FOREVER,
+		EventTimeToLiveSeconds:         forever,
 		DeleteEventAfterFirstRetrieval: true,
 	})
 	deleteOnFetchTest(manager, t)
@@ -1369,7 +1369,7 @@ func Test_LongpollManager_DeleteOnFetch_SkipBuffering(t *testing.T) {
 		t.Errorf("Unexpected category-to-buffer map size.  was: %d, expected %d",
 			len(sm.SubEventBuffer), 0)
 	}
-	if sm.EventTimeToLiveSeconds != FOREVER && sm.bufferPriorityQueue.Len() != 0 {
+	if sm.EventTimeToLiveSeconds != forever && sm.bufferPriorityQueue.Len() != 0 {
 		t.Errorf("Unexpected heap size.  was: %d, expected: %d", sm.bufferPriorityQueue.Len(), 0)
 	}
 
@@ -1409,7 +1409,7 @@ func Test_LongpollManager_DeleteOnFetch_SkipBuffering(t *testing.T) {
 		t.Errorf("Unexpected category-to-buffer map size.  was: %d, expected %d",
 			len(sm.SubEventBuffer), 0)
 	}
-	if sm.EventTimeToLiveSeconds != FOREVER && sm.bufferPriorityQueue.Len() != 0 {
+	if sm.EventTimeToLiveSeconds != forever && sm.bufferPriorityQueue.Len() != 0 {
 		t.Errorf("Unexpected heap size.  was: %d, expected: %d", sm.bufferPriorityQueue.Len(), 0)
 	}
 	// Don't forget to kill our pubsub manager's run goroutine

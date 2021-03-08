@@ -15,9 +15,9 @@ import (
 )
 
 const (
-	// FOREVER is a magic number to represent 'Forever' in
+	// forever is a magic number to represent 'Forever' in
 	// LongpollOptions.EventTimeToLiveSeconds
-	FOREVER = -1001
+	forever = -1001
 )
 
 // LongpollManager provides an interface to interact with the internal
@@ -46,18 +46,46 @@ const (
 // If for some reason you want multiple goroutines handling different pub-sub
 // channels, you can simply create multiple LongpollManagers.
 type LongpollManager struct {
-	subManager          *subscriptionManager
-	eventsIn            chan<- *Event
-	stopSignal          chan<- bool
+	subManager *subscriptionManager
+	eventsIn   chan<- *Event
+	stopSignal chan<- bool
+	// TODO: comment me
 	SubscriptionHandler func(w http.ResponseWriter, r *http.Request)
 }
 
 // AddOn provides a way to add behavior to longpolling.
-// For example: addons/persistence/file.go provides a way to
-// persist events to file to reuse across LongpollManager runs.
+// For example: FilePersistorAddOn in addons/persistence/file.go provides a way
+// to persist events to file to reuse across LongpollManager runs.
 type AddOn interface {
+	// OnLongpollStart is called from StartLongpoll() before LongpollManager's
+	// run goroutine starts. This should return a channel of events to
+	// pre-populate within the manager. If Options.EventTimeToLiveSeconds
+	// is set, then events that already too old will be skipped.
+	// AddOn implementers can provide their own pre-filtering of events
+	// based on the TTL for efficiency to avoid sending expired events on
+	// this channel in the first place.
+	//
+	// The AddOn must close the returned channel when it is done sending
+	// initial events to it as the LongpollManager will read from the
+	// channel until it is closed. The LongpollManager's main goroutine
+	// will not launch until after all data is read from this channel.
+	// NOTE: if an AddOn does not wish to pre-populate any events, then
+	// simply return an empty channel that is already closed.
 	OnLongpollStart() <-chan *Event
+
+	// OnPublish will be called with any event published by the LongpollManager.
+	// Note that the manager blocks on this function completing, so if
+	// an AddOn is going to perform any slow operations like a file write,
+	// database insert, or a network call, then it should do so it a separate
+	// goroutine to avoid blocking the manager. See FilePersistorAddOn for an
+	// example of how OnPublish can do its work in its own goroutine.
 	OnPublish(*Event)
+
+	// OnShutdown will be called on LongpollManager.Shutdown().
+	// AddOns can perform any cleanup or flushing before exit.
+	// The LongpollManager will block on this function during shutdown.
+	// Example use: FilePersistorAddOn will flush any buffered file write data
+	// to disk on shutdown.
 	OnShutdown()
 }
 
@@ -164,7 +192,7 @@ func StartLongpoll(opts Options) (*LongpollManager, error) {
 	}
 	// If TTL is zero, default to FOREVER
 	if opts.EventTimeToLiveSeconds == 0 {
-		opts.EventTimeToLiveSeconds = FOREVER
+		opts.EventTimeToLiveSeconds = forever
 	}
 	if opts.MaxEventBufferSize < 1 {
 		return nil, errors.New("Options.MaxEventBufferSize must be at least 1")
@@ -172,8 +200,8 @@ func StartLongpoll(opts Options) (*LongpollManager, error) {
 	if opts.MaxLongpollTimeoutSeconds < 1 {
 		return nil, errors.New("Options.MaxLongpollTimeoutSeconds must be at least 1")
 	}
-	// TTL must be positive, non-zero, or the magic FOREVER value (a negative const)
-	if opts.EventTimeToLiveSeconds < 1 && opts.EventTimeToLiveSeconds != FOREVER {
+	// TTL must be positive, non-zero, or the magic forever value (a negative const)
+	if opts.EventTimeToLiveSeconds < 1 && opts.EventTimeToLiveSeconds != forever {
 		return nil, errors.New("options.EventTimeToLiveSeconds must be at least 1 or the constant longpoll.FOREVER")
 	}
 	channelSize := 100
@@ -239,10 +267,10 @@ func StartLongpoll(opts Options) (*LongpollManager, error) {
 	// Start subscription manager
 	go subManager.run()
 	LongpollManager := LongpollManager{
-		&subManager,
-		events,
-		quit,
-		getLongPollSubscriptionHandler(opts.MaxLongpollTimeoutSeconds, clientRequestChan, clientTimeoutChan, opts.LoggingEnabled),
+		subManager:          &subManager,
+		eventsIn:            events,
+		stopSignal:          quit,
+		SubscriptionHandler: getLongPollSubscriptionHandler(opts.MaxLongpollTimeoutSeconds, clientRequestChan, clientTimeoutChan, opts.LoggingEnabled),
 	}
 	return &LongpollManager, nil
 }
@@ -265,7 +293,7 @@ func newclientSubscription(subscriptionCategory string, lastEventTime time.Time,
 		return nil, err
 	}
 	subscription := clientSubscription{
-		clientCategoryPair{u, subscriptionCategory},
+		clientCategoryPair{ClientUUID: u, SubscriptionCategory: subscriptionCategory},
 		lastEventTime,
 		lastEventID,
 		make(chan []*Event, 1),
@@ -664,7 +692,7 @@ func (sm *subscriptionManager) handleNewEvent(newEvent *Event) error {
 }
 
 func (sm *subscriptionManager) checkExpiredEvents(expiringBuf *expiringBuffer) error {
-	if sm.EventTimeToLiveSeconds == FOREVER {
+	if sm.EventTimeToLiveSeconds == forever {
 		// Events can never expire. bail out early instead of wasting time.
 		return nil
 	}
@@ -675,7 +703,7 @@ func (sm *subscriptionManager) checkExpiredEvents(expiringBuf *expiringBuffer) e
 }
 
 func (sm *subscriptionManager) deleteBufferIfEmpty(expiringBuf *expiringBuffer, category string) error {
-	if expiringBuf.eventBufferPtr.List.Len() == 0 { // TODO: nil check?  or is never possible
+	if expiringBuf.eventBufferPtr.List.Len() == 0 {
 		if sm.LoggingEnabled {
 			log.Printf("Deleting empty eventBuffer for category: %s\n", category)
 		}
@@ -686,7 +714,7 @@ func (sm *subscriptionManager) deleteBufferIfEmpty(expiringBuf *expiringBuffer, 
 }
 
 func (sm *subscriptionManager) purgeStaleCategories() error {
-	if sm.EventTimeToLiveSeconds == FOREVER {
+	if sm.EventTimeToLiveSeconds == forever {
 		// Events never expire, don't bother checking here
 		return nil
 	}
@@ -733,7 +761,7 @@ func (sm *subscriptionManager) purgeStaleCategories() error {
 // expire events (TTL == FOREVER), we don't bother paying the price of keeping
 // the priority queue.
 func (sm *subscriptionManager) priorityQueueUpdateBufferCreated(expiringBuf *expiringBuffer) error {
-	if sm.EventTimeToLiveSeconds == FOREVER {
+	if sm.EventTimeToLiveSeconds == forever {
 		// don't bother keeping track
 		return nil
 	}
@@ -747,7 +775,7 @@ func (sm *subscriptionManager) priorityQueueUpdateBufferCreated(expiringBuf *exp
 // (TTL == FOREVER), we don't bother paying the price of keeping the priority
 // queue.
 func (sm *subscriptionManager) priorityQueueUpdateNewEvent(expiringBuf *expiringBuffer, newEvent *Event) error {
-	if sm.EventTimeToLiveSeconds == FOREVER {
+	if sm.EventTimeToLiveSeconds == forever {
 		// don't bother keeping track
 		return nil
 	}
@@ -768,7 +796,7 @@ func (sm *subscriptionManager) priorityQueueUpdateNewEvent(expiringBuf *expiring
 // NOTE: This is called after an eventBuffer is deleted from sm.SubEventBuffer
 // and we want to remove the corresponding buffer item from our priority queue
 func (sm *subscriptionManager) priorityQueueUpdateDeletedBuffer(expiringBuf *expiringBuffer) error {
-	if sm.EventTimeToLiveSeconds == FOREVER {
+	if sm.EventTimeToLiveSeconds == forever {
 		// don't bother keeping track
 		return nil
 	}
