@@ -123,7 +123,7 @@ func (fp *FilePersistorAddOn) OnShutdown() {
 	<-fp.shutdownDone
 }
 
-// reads previously stored events from file and sends them to the channel
+// Reads previously stored events from file and sends them to the channel
 // returned by OnLongpollStart().
 // NOTE: uses bufio.NewScanner which has a default max scanner buffer size of
 // 64kb (65536). So any event whose JSON is that large will fail to be
@@ -132,7 +132,7 @@ func (fp *FilePersistorAddOn) OnShutdown() {
 func (fp *FilePersistorAddOn) getOnStartInputEvents(ch chan *golongpoll.Event) {
 	f, err := os.Open(fp.filename)
 	if err != nil {
-		log.Printf("FilePersistorAddOn - Failed to open event file, error: %v\n", err)
+		log.Printf("ERROR - golongpoll.FilePersistorAddOn - Failed to open event file, error: %v\n", err)
 		close(ch)
 		return
 	}
@@ -150,14 +150,14 @@ func (fp *FilePersistorAddOn) getOnStartInputEvents(ch chan *golongpoll.Event) {
 			continue
 		}
 		if err := json.Unmarshal(line, &event); err != nil {
-			log.Printf("FilePersistorAddOn - Failed to unmarshal event json, error: %v\n", err)
+			log.Printf("ERROR - golongpoll.FilePersistorAddOn - Failed to unmarshal event json, error: %v\n", err)
 			continue
 		} else {
 			ch <- &event
 		}
 	}
 	if err := scanner.Err(); err != nil {
-		log.Printf("FilePersistorAddOn - Error scanning file, error: %v\n", err)
+		log.Printf("ERROR - golongpoll.FilePersistorAddOn - Error scanning file, error: %v\n", err)
 	}
 
 	// NOTE: important to close--or calling LongpollManager will hang waiting
@@ -179,7 +179,7 @@ func (fp *FilePersistorAddOn) run() {
 	// to the end. *smacks palm on forehead*
 	outFile, err := os.OpenFile(fp.filename, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0755)
 	if err != nil {
-		log.Printf("FilePersistorAddOn - STOPPING! Failed to open file, error: %v\n", err)
+		log.Printf("ERROR - golongpoll.FilePersistorAddOn - Failed to open file, STOPPING, error: %v\n", err)
 		return
 	}
 	defer outFile.Close()
@@ -199,17 +199,15 @@ func (fp *FilePersistorAddOn) run() {
 
 			eventJson, err := json.Marshal(event)
 			if err != nil {
-				log.Printf("FilePersistorAddOn - Failed to marshal event json, error: %v\n", err)
+				log.Printf("ERROR - golongpoll.FilePersistorAddOn - Failed to marshal event json, error: %v\n", err)
 				continue
 			}
 
 			// NOTE: adding newline before instead of after in case last event wasn't fully written
 			// out to completion
 			w.WriteString("\n")
-			_, err = w.Write(eventJson)
-
-			if err != nil {
-				log.Printf("FilePersistorAddOn - Failed to write event json to file, error: %v\n", err)
+			if _, err = w.Write(eventJson); err != nil {
+				log.Printf("ERROR - golongpoll.FilePersistorAddOn - Failed to write event json to file, error: %v\n", err)
 				continue
 			}
 
