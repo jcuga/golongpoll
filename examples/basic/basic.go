@@ -29,7 +29,6 @@ import (
 	"context"
 	"fmt"
 	"github.com/jcuga/golongpoll"
-	"github.com/jcuga/golongpoll/addons/persistence"
 	"log"
 	"net/http"
 	"os"
@@ -38,7 +37,7 @@ import (
 )
 
 func main() {
-	filePersistor, err := persistence.NewFilePersistor("/home/pi/code/golongpoll/events.data", 4096, 30)
+	filePersistor, err := golongpoll.NewFilePersistor("/home/pi/code/golongpoll/events.data", 4096, 30)
 	if err != nil {
 		fmt.Printf("Failed to create file persistor, error: %v", err)
 		return

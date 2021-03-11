@@ -1,29 +1,16 @@
-// Add-on that shows how to leverage golongpoll.Options.AddOn to add file
-// persistence to longpoll events. Without creating a persistence add-on, all
-// event data is lost on program end as the data is kept only in memory.
-//
-// Library users can create their own add-ons for things like storing events in
-// a database, create their own audit log of events, or send data via RPC or
-// network call.
-//
-// NOTE: the OnPublish callback is called within the LongpollManager's main
-// goroutine. So blocking operations will cause the longpoll manager to block.
-// Hence why this example will rely on a channel with separate goroutine to
-// avoid blocking the caller.
-package persistence
+package golongpoll
 
 import (
 	"bufio"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/jcuga/golongpoll"
 	"log"
 	"os"
 	"time"
 )
 
-// FilePersistorAddOn implements the golongpoll.AddOn interface to provide
+// FilePersistorAddOn implements the AddOn interface to provide
 // file persistence for longpoll events. Use NewFilePersistor(string, int, int)
 // to create a configured FilePersistorAddOn.
 //
@@ -42,7 +29,7 @@ type FilePersistorAddOn struct {
 	// Channel for incoming published events.
 	// To avoid blocking LongpollManager when it calls OnPublish(), we send
 	// events to channel for processing in a separate goroutine.
-	publishedEvents chan *golongpoll.Event
+	publishedEvents chan *Event
 	// Channel used to signal when done flushing to disk during OnShutdown().
 	shutdownDone chan bool
 }
@@ -76,7 +63,7 @@ func NewFilePersistor(filename string, writeBufferSize int, writeFlushPeriodSeco
 	}
 	f.Close()
 
-	eventsIn := make(chan *golongpoll.Event, 100)
+	eventsIn := make(chan *Event, 100)
 
 	fp := FilePersistorAddOn{
 		filename:                filename,
@@ -95,9 +82,9 @@ func NewFilePersistor(filename string, writeBufferSize int, writeFlushPeriodSeco
 // channel will call close() on the channel when it is out of
 // initial events. The LongpollManager will wait for more events
 // until the channel is closed.
-func (fp *FilePersistorAddOn) OnLongpollStart() <-chan *golongpoll.Event {
+func (fp *FilePersistorAddOn) OnLongpollStart() <-chan *Event {
 	// return a channel to send initial events to.
-	ch := make(chan *golongpoll.Event)
+	ch := make(chan *Event)
 	// populate input events channel in own goroutine, which will
 	// call close(ch) once it sends all events.
 	go fp.getOnStartInputEvents(ch)
@@ -110,7 +97,7 @@ func (fp *FilePersistorAddOn) OnLongpollStart() <-chan *golongpoll.Event {
 // OnPublish will write new events to file.
 // Events are sent via channel to a separate goroutine so that the calling
 // LongpollManager does not block on the file writing.
-func (fp *FilePersistorAddOn) OnPublish(event *golongpoll.Event) {
+func (fp *FilePersistorAddOn) OnPublish(event *Event) {
 	fp.publishedEvents <- event
 }
 
@@ -129,7 +116,7 @@ func (fp *FilePersistorAddOn) OnShutdown() {
 // 64kb (65536). So any event whose JSON is that large will fail to be
 // read back in completely. These events, and any other events whose JSON
 // fails to unmarshal will be skipped.
-func (fp *FilePersistorAddOn) getOnStartInputEvents(ch chan *golongpoll.Event) {
+func (fp *FilePersistorAddOn) getOnStartInputEvents(ch chan *Event) {
 	f, err := os.Open(fp.filename)
 	if err != nil {
 		log.Printf("ERROR - golongpoll.FilePersistorAddOn - Failed to open event file, error: %v\n", err)
@@ -140,7 +127,7 @@ func (fp *FilePersistorAddOn) getOnStartInputEvents(ch chan *golongpoll.Event) {
 
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
-		var event golongpoll.Event
+		var event Event
 		var line = scanner.Bytes()
 		// skip any blank lines as we prepend newline before writing event json.
 		// NOTE: doing prepend instead of append so if an event getting written

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 	"time"
 
@@ -339,7 +340,7 @@ func Test_LongpollManager_WebClient_InvalidRequests(t *testing.T) {
 
 	// Empty request, this is going to result in an JSON error object:
 	req, _ := http.NewRequest("GET", "", nil)
-	w := httptest.NewRecorder()
+	w := NewCloseNotifierRecorder()
 	subscriptionHandler.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Errorf("SubscriptionHandler didn't return %v", http.StatusOK)
@@ -352,7 +353,7 @@ func Test_LongpollManager_WebClient_InvalidRequests(t *testing.T) {
 
 	// Invalid timeout, not a number
 	req, _ = http.NewRequest("GET", "?timeout=adf&category=veggies", nil)
-	w = httptest.NewRecorder()
+	w = NewCloseNotifierRecorder()
 	subscriptionHandler.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Errorf("SubscriptionHandler didn't return %v", http.StatusOK)
@@ -363,7 +364,7 @@ func Test_LongpollManager_WebClient_InvalidRequests(t *testing.T) {
 
 	// Invalid timeout, too small
 	req, _ = http.NewRequest("GET", "?timeout=0&category=veggies", nil)
-	w = httptest.NewRecorder()
+	w = NewCloseNotifierRecorder()
 	subscriptionHandler.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Errorf("SubscriptionHandler didn't return %v", http.StatusOK)
@@ -374,7 +375,7 @@ func Test_LongpollManager_WebClient_InvalidRequests(t *testing.T) {
 
 	// Invalid timeout, too big
 	req, _ = http.NewRequest("GET", "?timeout=121&category=veggies", nil)
-	w = httptest.NewRecorder()
+	w = NewCloseNotifierRecorder()
 	subscriptionHandler.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Errorf("SubscriptionHandler didn't return %v", http.StatusOK)
@@ -385,7 +386,7 @@ func Test_LongpollManager_WebClient_InvalidRequests(t *testing.T) {
 
 	// Valid timeout, but missing category:
 	req, _ = http.NewRequest("GET", "?timeout=30", nil)
-	w = httptest.NewRecorder()
+	w = NewCloseNotifierRecorder()
 	subscriptionHandler.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Errorf("SubscriptionHandler didn't return %v", http.StatusOK)
@@ -396,7 +397,7 @@ func Test_LongpollManager_WebClient_InvalidRequests(t *testing.T) {
 
 	// Valid timeout, but category is too small
 	req, _ = http.NewRequest("GET", "?timeout=30&category=", nil)
-	w = httptest.NewRecorder()
+	w = NewCloseNotifierRecorder()
 	subscriptionHandler.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Errorf("SubscriptionHandler didn't return %v", http.StatusOK)
@@ -411,7 +412,7 @@ func Test_LongpollManager_WebClient_InvalidRequests(t *testing.T) {
 		tooLong += "a"
 	} // 1025 chars long
 	req, _ = http.NewRequest("GET", "?timeout=30&category="+tooLong, nil)
-	w = httptest.NewRecorder()
+	w = NewCloseNotifierRecorder()
 	subscriptionHandler.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Errorf("SubscriptionHandler didn't return %v", http.StatusOK)
@@ -422,7 +423,7 @@ func Test_LongpollManager_WebClient_InvalidRequests(t *testing.T) {
 
 	// Valid timeout, valid category, but invalid since_time
 	req, _ = http.NewRequest("GET", "?timeout=30&category=foobar&since_time=asdf", nil)
-	w = httptest.NewRecorder()
+	w = NewCloseNotifierRecorder()
 	subscriptionHandler.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Errorf("SubscriptionHandler didn't return %v", http.StatusOK)
@@ -620,7 +621,7 @@ func Test_LongpollManager_WebClient_HasEvents(t *testing.T) {
 		t.Errorf("Failed to decode json: %q", err)
 	}
 	if len(eventResponse.Events) != 1 {
-		t.Errorf("Unexpected number of events.  Expected: %d, got: %d", 1, len(eventResponse.Events))
+		t.Fatalf("Unexpected number of events.  Expected: %d, got: %d", 1, len(eventResponse.Events))
 	}
 	if (eventResponse.Events)[0].Category != "veggies" {
 		t.Errorf("Unexpected category.  Expected: %q, got: %q", "veggies", (eventResponse.Events)[0].Category)
@@ -665,7 +666,7 @@ func Test_LongpollManager_WebClient_HasEvents(t *testing.T) {
 		t.Errorf("Failed to decode json: %q", err)
 	}
 	if len(eventResponse.Events) != 1 {
-		t.Errorf("Unexpected number of events.  Expected: %d, got: %d", 1, len(eventResponse.Events))
+		t.Fatalf("Unexpected number of events.  Expected: %d, got: %d", 1, len(eventResponse.Events))
 	}
 	if (eventResponse.Events)[0].Category != "veggies" {
 		t.Errorf("Unexpected category.  Expected: %q, got: %q", "veggies", (eventResponse.Events)[0].Category)
@@ -690,7 +691,7 @@ func Test_LongpollManager_WebClient_HasEvents(t *testing.T) {
 		t.Errorf("Failed to decode json: %q", err)
 	}
 	if len(eventResponse.Events) != 1 {
-		t.Errorf("Unexpected number of events.  Expected: %d, got: %d", 1, len(eventResponse.Events))
+		t.Fatalf("Unexpected number of events.  Expected: %d, got: %d", 1, len(eventResponse.Events))
 	}
 	if (eventResponse.Events)[0].Category != "veggies" {
 		t.Errorf("Unexpected category.  Expected: %q, got: %q", "veggies", (eventResponse.Events)[0].Category)
@@ -711,7 +712,7 @@ func Test_LongpollManager_WebClient_HasEvents(t *testing.T) {
 		t.Errorf("Failed to decode json: %q", err)
 	}
 	if len(eventResponse.Events) != 2 {
-		t.Errorf("Unexpected number of events.  Expected: %d, got: %d", 2, len(eventResponse.Events))
+		t.Fatalf("Unexpected number of events.  Expected: %d, got: %d", 2, len(eventResponse.Events))
 	}
 	if (eventResponse.Events)[0].Data != "corn" {
 		t.Errorf("Unexpected data.  Expected: %q, got: %q", "corn", (eventResponse.Events)[0].Data)
@@ -760,7 +761,7 @@ func Test_LongpollManager_WebClient_HasBufferedEvents(t *testing.T) {
 		t.Errorf("Failed to decode json: %q", err)
 	}
 	if len(eventResponse.Events) != 2 {
-		t.Errorf("Unexpected number of events.  Expected: %d, got: %d", 2, len(eventResponse.Events))
+		t.Fatalf("Unexpected number of events.  Expected: %d, got: %d", 2, len(eventResponse.Events))
 	}
 	if (eventResponse.Events)[0].Category != "veggies" {
 		t.Errorf("Unexpected category.  Expected: %q, got: %q", "veggies", (eventResponse.Events)[0].Category)
@@ -1220,7 +1221,7 @@ func deleteOnFetchTest(manager *LongpollManager, t *testing.T) {
 		t.Errorf("Failed to decode json: %q", err)
 	}
 	if len(eventResponse.Events) != 1 {
-		t.Errorf("Unexpected number of events.  Expected: %d, got: %d", 1, len(eventResponse.Events))
+		t.Fatalf("Unexpected number of events.  Expected: %d, got: %d", 1, len(eventResponse.Events))
 	}
 	if (eventResponse.Events)[0].Category != "fruit" {
 		t.Errorf("Unexpected category.  Expected: %q, got: %q", "fruit", (eventResponse.Events)[0].Category)
@@ -1283,7 +1284,7 @@ func deleteOnFetchTest(manager *LongpollManager, t *testing.T) {
 		t.Errorf("Failed to decode json: %q", err)
 	}
 	if len(eventResponse.Events) != 2 {
-		t.Errorf("Unexpected number of events.  Expected: %d, got: %d", 2, len(eventResponse.Events))
+		t.Fatalf("Unexpected number of events.  Expected: %d, got: %d", 2, len(eventResponse.Events))
 	}
 	if (eventResponse.Events)[0].Category != "veggie" {
 		t.Errorf("Unexpected category.  Expected: %q, got: %q", "veggie", (eventResponse.Events)[0].Category)
@@ -1396,7 +1397,7 @@ func Test_LongpollManager_DeleteOnFetch_SkipBuffering(t *testing.T) {
 		t.Errorf("Failed to decode json: %q", err)
 	}
 	if len(eventResponse.Events) != 1 {
-		t.Errorf("Unexpected number of events.  Expected: %d, got: %d", 1, len(eventResponse.Events))
+		t.Fatalf("Unexpected number of events.  Expected: %d, got: %d", 1, len(eventResponse.Events))
 	}
 	if (eventResponse.Events)[0].Category != "fruit" {
 		t.Errorf("Unexpected category.  Expected: %q, got: %q", "fruit", (eventResponse.Events)[0].Category)
@@ -1588,7 +1589,7 @@ func Test_MultipleConsecutivePublishedEvents(t *testing.T) {
 	}
 
 	if len(eventResponse.Events) != 1 {
-		t.Errorf("Unexpected number of events.  Expected: %d, got: %d", 1, len(eventResponse.Events))
+		t.Fatalf("Unexpected number of events.  Expected: %d, got: %d", 1, len(eventResponse.Events))
 	}
 
 	firstEvent := (eventResponse.Events)[0]
@@ -1668,4 +1669,85 @@ func Test_MultipleConsecutivePublishedEvents(t *testing.T) {
 
 	// Don't forget to kill our pubsub manager's run goroutine
 	manager.Shutdown()
+}
+
+// Tests using the FilePersistorAddOn with LongpollManager.
+func Test_WithFilePersistorAddOn(t *testing.T) {
+	filename := "./glp-unit-tests-events.data"
+	// NOTE: the flush time of 10 seconds means we're relying on
+	// the OnShutdown() hook to flush data. This proves that OnShutdown
+	// gets called and a flush occurs.
+	filePersistor, err := NewFilePersistor(filename, 4096, 10)
+	if err != nil {
+		fmt.Printf("Failed to create file persistor, error: %v", err)
+		return
+	}
+	defer os.Remove(filename)
+
+	// Create manager with file persistor addon and publish data.
+	manager, err := StartLongpoll(Options{
+		AddOn: filePersistor,
+	})
+	if err != nil {
+		t.Fatalf("Failed to create manager: %q", err)
+	}
+
+	manager.Publish("food", "eggs")
+	manager.Publish("food", "waffles")
+	// NOTE: looks like calling Shutdown() immediately after Publish()
+	// means that the internal select statement can read either the published
+	// event or the shutdown signal first.
+	time.Sleep(10 * time.Millisecond)
+	manager.Shutdown()
+
+	// Now start a new manager using a file persistor with same underlying
+	// filename. We should be able to see persisted events from previous run.
+	// This means that:
+	// a) OnPublish hook saw the events,
+	// b) the data was flushed via OnShutdown, and
+	// c) events are read back in from file via OnLongpollStart hook.
+	filePersistor, err = NewFilePersistor(filename, 4096, 10)
+	if err != nil {
+		fmt.Printf("Failed to create file persistor, error: %v", err)
+		return
+	}
+
+	manager, err = StartLongpoll(Options{
+		AddOn: filePersistor,
+	})
+	if err != nil {
+		t.Fatalf("Failed to create manager: %q", err)
+	}
+
+	sinceTime := timeToEpochMilliseconds(time.Now().Add(-60 * time.Second))
+	subscriptionHandler := ajaxHandler(manager.SubscriptionHandler)
+	req, _ := http.NewRequest("GET", fmt.Sprintf("?timeout=6&category=food&since_time=%d", sinceTime), nil)
+
+	w := NewCloseNotifierRecorder()
+	subscriptionHandler.ServeHTTP(w, req)
+
+	// Confirm we got the correct event
+	if w.Code != http.StatusOK {
+		t.Errorf("SubscriptionHandler didn't return %v", http.StatusOK)
+	}
+	var eventResponse eventResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &eventResponse); err != nil {
+		t.Errorf("Failed to decode json: %q", err)
+	}
+	if len(eventResponse.Events) != 2 {
+		t.Fatalf("Unexpected number of events.  Expected: %d, got: %d", 2, len(eventResponse.Events))
+	}
+	if (eventResponse.Events)[0].Category != "food" {
+		t.Errorf("Unexpected category.  Expected: %q, got: %q", "food", (eventResponse.Events)[0].Category)
+	}
+	if (eventResponse.Events)[0].Data != "eggs" {
+		t.Errorf("Unexpected data.  Expected: %q, got: %q", "eggs", (eventResponse.Events)[0].Data)
+	}
+	if (eventResponse.Events)[1].Category != "food" {
+		t.Errorf("Unexpected category.  Expected: %q, got: %q", "food", (eventResponse.Events)[1].Category)
+	}
+	if (eventResponse.Events)[1].Data != "waffles" {
+		t.Errorf("Unexpected data.  Expected: %q, got: %q", "waffles", (eventResponse.Events)[1].Data)
+	}
+
 }
