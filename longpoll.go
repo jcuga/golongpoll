@@ -140,6 +140,7 @@ func (m *LongpollManager) ShutdownWithTimeout(seconds int) error {
 type Options struct {
 	// Whether or not to print non-error logs about longpolling.
 	// Useful mainly for debugging, defaults to false.
+	// NOTE: this will log every event's contents which can be spammy!
 	LoggingEnabled bool
 
 	// Max client timeout seconds  to be accepted by the SubscriptionHandler
