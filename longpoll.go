@@ -493,6 +493,21 @@ func (sm *subscriptionManager) run() error {
 			if sm.LoggingEnabled {
 				log.Println("INFO - golongpoll.run - Received quit signal, stopping.")
 			}
+
+			// If a Publish() and Shutdown() occur one after the other from the
+			// same goroutine, it is random whether or not the quit signal will
+			// be seen before the published data, so on shutdown, see if there
+			// are additional events before shutting down.
+			select {
+				case <-time.After(time.Duration(1) * time.Millisecond):
+					break
+				case event := <-sm.Events:
+					if sm.AddOn != nil {
+						sm.AddOn.OnPublish(event)
+					}
+					sm.handleNewEvent(event)
+			}
+
 			// optional shutdown callback
 			if sm.AddOn != nil {
 				sm.AddOn.OnShutdown()

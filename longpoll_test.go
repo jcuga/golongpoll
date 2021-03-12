@@ -1696,11 +1696,9 @@ func Test_WithFilePersistorAddOn(t *testing.T) {
 
 	manager.Publish("food", "eggs")
 	manager.Publish("food", "waffles")
-	// NOTE: looks like calling Shutdown() immediately after Publish()
-	// means that the internal select statement can read either the published
-	// event or the shutdown signal first.
 	time.Sleep(10 * time.Millisecond)
 	manager.Shutdown()
+	time.Sleep(10 * time.Millisecond)
 
 	// Now start a new manager using a file persistor with same underlying
 	// filename. We should be able to see persisted events from previous run.
