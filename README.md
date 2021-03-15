@@ -39,7 +39,7 @@ The default options should work for most people's needs.  However, if you are wo
 
 The following options are now available.
 - ```LoggingEnabled bool```: Whether or not to output logs about events, subscriptions, and clients.  Defaults to false.
-- ```MaxLongpollTimeoutSeconds int```: Max amount of time clients are allowed to keep a longpoll connection.  This is used against the ```timeout```: Query param sent to the ```SubscriptionHandler```.  Defaults to 120.
+- ```MaxLongpollTimeoutSeconds int```: Max amount of time clients are allowed to keep a longpoll connection.  This is used against the ```timeout```: Query param sent to the ```SubscriptionHandler```.  Defaults to 110.
 - ```MaxEventBufferSize int```: The max number of events kept in a given subscription category before the oldest events are discarded even if they're not expired yet.  Buffering is important if you want to let clients request events from the past, or if you have high-volume events that occur in spurts and you don't clients to miss anything.  Defaults to 250.
 - ```EventTimeToLiveSeconds int```: How long events can remain in the internal buffer before they're discarded for being too old.  This determines how long in the past clients can see events (they can provide a ```since_time``` query param to request old events).  Defaults to the constant ```golongpoll.FOREVER``` which means they never expire.  If you're concerned about old events sitting around in the internal buffers wasting space (especially if you're generating a large number of events and running the program for long periods of time), you can set a reasonable expiration and they automatically be removed once expired.
 - ```DeleteEventAfterFirstRetrieval bool```:  Whether or not an event is immediately deleted as soon as it is retrieved by a client (via the ```SubscriptionHandler```).  This is useful if you only have one client per subscription category and you only care to see event's once.  This may be useful for a notification type scenario where each client has a subscription category and you only see events once.  Alternatively, clients could just update their ```since_time``` param in their longpoll request to be that of the timestamp of their most recent notification, thus causing previously seen notifications to not be retrieved.  But there may be other scenarios where this option is more desirable since people have asked for this.  Defaults to false.
@@ -71,7 +71,7 @@ The ```LongpollManager``` has a field called ```SubscriptionHandler``` that you 
 
 This HTTP handler has the following URL query params as input.
 
-* ```timeout``` number of seconds the server should wait until issuing a timeout response in the event there are no new events during the client's longpoll.  The default manager has a max timeout of 120 seconds, but you can customize this by using ```Options.MaxLongpollTimeoutSeconds```
+* ```timeout``` number of seconds the server should wait until issuing a timeout response in the event there are no new events during the client's longpoll.  The default manager has a max timeout of 110 seconds, but you can customize this by using ```Options.MaxLongpollTimeoutSeconds```
 * ```category``` the subscription category to subscribe to.  When you publish an event, you publish it on a specific category.
 * ```since_time``` optional.  the number of milliseconds since epoch.  If not provided, defaults to current time.  This tells the longpoll server to only give you events that have occurred since this time.  
 

@@ -52,6 +52,11 @@ type LongpollManager struct {
 	stopSignal chan<- bool
 	// TODO: comment me
 	SubscriptionHandler func(w http.ResponseWriter, r *http.Request)
+	// flag whether or not StartLongpoll has been called
+	started bool
+	// flag whether or not LongpollManager.Shutdown has been called--enforces
+	// use-only-once.
+	stopped bool
 }
 
 // AddOn provides a way to add behavior to longpolling.
@@ -95,6 +100,14 @@ type AddOn interface {
 // the category param must be a non-empty string no longer than 1024,
 // otherwise you get an error.
 func (m *LongpollManager) Publish(category string, data interface{}) error {
+	if !m.started {
+		panic("LongpollManager cannot call Publish, never started. LongpollManager must be created via StartLongPoll(Options).")
+	}
+
+	if m.stopped {
+		panic("LongpollManager cannot call Publish, already stopped.")
+	}
+
 	if len(category) == 0 {
 		return errors.New("empty category")
 	}
@@ -119,6 +132,15 @@ func (m *LongpollManager) Publish(category string, data interface{}) error {
 // SubscriptionHandler.  Multiple calls to this function on the same manager will
 // result in a panic.
 func (m *LongpollManager) Shutdown() {
+	if m.stopped {
+		panic("LongpollManager cannot be stopped more than once.")
+	}
+
+	if !m.started {
+		panic("LongpollManager cannot be stopped, never started. LongpollManager must be created via StartLongPoll(Options).")
+	}
+
+	m.stopped = true
 	close(m.stopSignal)
 	<-m.subManager.shutdownDone
 }
@@ -127,6 +149,15 @@ func (m *LongpollManager) Shutdown() {
 // amount of time when waiting for the shutdown to complete.
 // Returns an error on timeout, otherwise nil.
 func (m *LongpollManager) ShutdownWithTimeout(seconds int) error {
+	if m.stopped {
+		panic("LongpollManager cannot be stopped more than once.")
+	}
+
+	if !m.started {
+		panic("LongpollManager cannot be stopped, never started. LongpollManager must be created via StartLongPoll(Options).")
+	}
+
+	m.stopped = true
 	close(m.stopSignal)
 	select {
 	case <-m.subManager.shutdownDone:
@@ -276,6 +307,7 @@ func StartLongpoll(opts Options) (*LongpollManager, error) {
 		stopSignal: quit,
 		SubscriptionHandler: getLongPollSubscriptionHandler(opts.MaxLongpollTimeoutSeconds,
 			clientRequestChan, clientTimeoutChan, opts.LoggingEnabled),
+		started: true,
 	}
 	return &LongpollManager, nil
 }
@@ -664,7 +696,7 @@ func (sm *subscriptionManager) handleNewEvent(newEvent *Event) error {
 				priority:       nowMs,
 			}
 			if sm.LoggingEnabled {
-				log.Printf("DEBUG - golongpoll.handleNewEvent - Creating new eventBuffer for category: %v",
+				log.Printf("DEBUG - golongpoll.handleNewEvent - Creating new eventBuffer for category: %q",
 					newEvent.Category)
 			}
 			sm.SubEventBuffer[newEvent.Category] = expiringBuf
@@ -709,7 +741,7 @@ func (sm *subscriptionManager) checkExpiredEvents(expiringBuf *expiringBuffer) e
 func (sm *subscriptionManager) deleteBufferIfEmpty(expiringBuf *expiringBuffer, category string) error {
 	if expiringBuf.eventBufferPtr.List.Len() == 0 {
 		if sm.LoggingEnabled {
-			log.Printf("DEBUG - golongpoll.deleteBufferIfEmpty - Deleting empty eventBuffer for category: %s\n", category)
+			log.Printf("DEBUG - golongpoll.deleteBufferIfEmpty - Deleting empty eventBuffer for category: %q\n", category)
 		}
 		delete(sm.SubEventBuffer, category)
 		sm.priorityQueueUpdateDeletedBuffer(expiringBuf)
@@ -742,7 +774,7 @@ func (sm *subscriptionManager) purgeStaleCategories() error {
 			// the entire buffer.
 			if item, ok := heap.Pop(&sm.bufferPriorityQueue).(*expiringBuffer); ok {
 				if sm.LoggingEnabled {
-					log.Printf("DEBUG - golongpoll.purgeStaleCategories - Purging expired eventBuffer for category: %v.\n",
+					log.Printf("DEBUG - golongpoll.purgeStaleCategories - Purging expired eventBuffer for category: %q.\n",
 						item.category)
 				}
 				// remove from our category-to-buffer map:
