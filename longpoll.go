@@ -143,8 +143,11 @@ type Options struct {
 	// NOTE: this will log every event's contents which can be spammy!
 	LoggingEnabled bool
 
-	// Max client timeout seconds  to be accepted by the SubscriptionHandler
-	// (The 'timeout' HTTP query param).  Defaults to 120.
+	// Max client timeout seconds to be accepted by the SubscriptionHandler
+	// (The 'timeout' HTTP query param).  Defaults to 110.
+	// NOTE: if serving behind a proxy/webserver, make sure the max allowed
+	// timeout here is less than that server's configured HTTP timeout!
+	// Typically, servers will have a 60 or 120 second timeout by default.
 	MaxLongpollTimeoutSeconds int
 
 	// How many events to buffer per subscriptoin category before discarding
@@ -185,7 +188,7 @@ type Options struct {
 func StartLongpoll(opts Options) (*LongpollManager, error) {
 	// default if not specified (likely struct skipped defining this field)
 	if opts.MaxLongpollTimeoutSeconds == 0 {
-		opts.MaxLongpollTimeoutSeconds = 120
+		opts.MaxLongpollTimeoutSeconds = 110
 	}
 	// default if not specified (likely struct skipped defining this field)
 	if opts.MaxEventBufferSize == 0 {
@@ -419,8 +422,10 @@ type timeoutResponse struct {
 }
 
 func makeTimeoutResponse(t time.Time) *timeoutResponse {
-	return &timeoutResponse{"no events before timeout",
-		timeToEpochMilliseconds(t)}
+	return &timeoutResponse{
+		TimeoutMessage: "no events before timeout",
+		Timestamp:      timeToEpochMilliseconds(t),
+	}
 }
 
 type clientCategoryPair struct {
@@ -499,13 +504,13 @@ func (sm *subscriptionManager) run() error {
 			// be seen before the published data, so on shutdown, see if there
 			// are additional events before shutting down.
 			select {
-				case <-time.After(time.Duration(1) * time.Millisecond):
-					break
-				case event := <-sm.Events:
-					if sm.AddOn != nil {
-						sm.AddOn.OnPublish(event)
-					}
-					sm.handleNewEvent(event)
+			case <-time.After(time.Duration(1) * time.Millisecond):
+				break
+			case event := <-sm.Events:
+				if sm.AddOn != nil {
+					sm.AddOn.OnPublish(event)
+				}
+				sm.handleNewEvent(event)
 			}
 
 			// optional shutdown callback

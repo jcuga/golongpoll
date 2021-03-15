@@ -345,9 +345,9 @@ func Test_LongpollManager_WebClient_InvalidRequests(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Errorf("SubscriptionHandler didn't return %v", http.StatusOK)
 	}
-	// Also note how it says "1-120", so our custom timeout arg of 120 was
+	// Also note how it says "1-110", so our custom timeout arg of 110 was
 	// used
-	if w.Body.String() != "{\"error\": \"Invalid timeout arg.  Must be 1-120.\"}" {
+	if w.Body.String() != "{\"error\": \"Invalid timeout arg.  Must be 1-110.\"}" {
 		t.Errorf("Unexpected response: %q", w.Body.String())
 	}
 
@@ -358,7 +358,7 @@ func Test_LongpollManager_WebClient_InvalidRequests(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Errorf("SubscriptionHandler didn't return %v", http.StatusOK)
 	}
-	if w.Body.String() != "{\"error\": \"Invalid timeout arg.  Must be 1-120.\"}" {
+	if w.Body.String() != "{\"error\": \"Invalid timeout arg.  Must be 1-110.\"}" {
 		t.Errorf("Unexpected response: %q", w.Body.String())
 	}
 
@@ -369,18 +369,18 @@ func Test_LongpollManager_WebClient_InvalidRequests(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Errorf("SubscriptionHandler didn't return %v", http.StatusOK)
 	}
-	if w.Body.String() != "{\"error\": \"Invalid timeout arg.  Must be 1-120.\"}" {
+	if w.Body.String() != "{\"error\": \"Invalid timeout arg.  Must be 1-110.\"}" {
 		t.Errorf("Unexpected response: %q", w.Body.String())
 	}
 
 	// Invalid timeout, too big
-	req, _ = http.NewRequest("GET", "?timeout=121&category=veggies", nil)
+	req, _ = http.NewRequest("GET", "?timeout=111&category=veggies", nil)
 	w = NewCloseNotifierRecorder()
 	subscriptionHandler.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Errorf("SubscriptionHandler didn't return %v", http.StatusOK)
 	}
-	if w.Body.String() != "{\"error\": \"Invalid timeout arg.  Must be 1-120.\"}" {
+	if w.Body.String() != "{\"error\": \"Invalid timeout arg.  Must be 1-110.\"}" {
 		t.Errorf("Unexpected response: %q", w.Body.String())
 	}
 
@@ -799,7 +799,7 @@ func Test_LongpollManager_StartLongpoll_Options(t *testing.T) {
 	// Error cases due to invalid options:
 	if _, err := StartLongpoll(Options{
 		LoggingEnabled:            true,
-		MaxLongpollTimeoutSeconds: 120,
+		MaxLongpollTimeoutSeconds: 110,
 		MaxEventBufferSize:        -1,
 		EventTimeToLiveSeconds:    1,
 	}); err == nil {
@@ -815,7 +815,7 @@ func Test_LongpollManager_StartLongpoll_Options(t *testing.T) {
 	}
 	if _, err := StartLongpoll(Options{
 		LoggingEnabled:            true,
-		MaxLongpollTimeoutSeconds: 120,
+		MaxLongpollTimeoutSeconds: 110,
 		MaxEventBufferSize:        100,
 		EventTimeToLiveSeconds:    -1,
 	}); err == nil {
@@ -825,7 +825,7 @@ func Test_LongpollManager_StartLongpoll_Options(t *testing.T) {
 	// actual TTL
 	if manager, err := StartLongpoll(Options{
 		LoggingEnabled:            true,
-		MaxLongpollTimeoutSeconds: 120,
+		MaxLongpollTimeoutSeconds: 110,
 		MaxEventBufferSize:        100,
 		EventTimeToLiveSeconds:    30,
 	}); err != nil {
@@ -837,7 +837,7 @@ func Test_LongpollManager_StartLongpoll_Options(t *testing.T) {
 	// Forever
 	if manager, err := StartLongpoll(Options{
 		LoggingEnabled:            true,
-		MaxLongpollTimeoutSeconds: 120,
+		MaxLongpollTimeoutSeconds: 110,
 		MaxEventBufferSize:        100,
 		EventTimeToLiveSeconds:    forever,
 	}); err != nil {
@@ -848,7 +848,7 @@ func Test_LongpollManager_StartLongpoll_Options(t *testing.T) {
 	// Confirm zero TTL converts to forever
 	if manager, err := StartLongpoll(Options{
 		LoggingEnabled:            true,
-		MaxLongpollTimeoutSeconds: 120,
+		MaxLongpollTimeoutSeconds: 110,
 		MaxEventBufferSize:        100,
 		EventTimeToLiveSeconds:    0,
 	}); err != nil {
@@ -875,8 +875,8 @@ func Test_LongpollManager_StartLongpoll_Options(t *testing.T) {
 			t.Errorf("Expected default of FOREVER when EventTimeToLiveSeconds is 0.  instead: %d",
 				manager.subManager.EventTimeToLiveSeconds)
 		}
-		if manager.subManager.MaxLongpollTimeoutSeconds != 120 {
-			t.Errorf("Expected default of 120 when MaxLongpollTimeoutSeconds is 0.  instead: %d",
+		if manager.subManager.MaxLongpollTimeoutSeconds != 110 {
+			t.Errorf("Expected default of 110 when MaxLongpollTimeoutSeconds is 0.  instead: %d",
 				manager.subManager.MaxLongpollTimeoutSeconds)
 		}
 		if manager.subManager.MaxEventBufferSize != 250 {
@@ -902,8 +902,8 @@ func Test_LongpollManager_StartLongpoll_Options(t *testing.T) {
 			t.Errorf("Expected default of FOREVER when EventTimeToLiveSeconds is 0.  instead: %d",
 				manager.subManager.EventTimeToLiveSeconds)
 		}
-		if manager.subManager.MaxLongpollTimeoutSeconds != 120 {
-			t.Errorf("Expected default of 120 when MaxLongpollTimeoutSeconds is 0.  instead: %d",
+		if manager.subManager.MaxLongpollTimeoutSeconds != 110 {
+			t.Errorf("Expected default of 110 when MaxLongpollTimeoutSeconds is 0.  instead: %d",
 				manager.subManager.MaxLongpollTimeoutSeconds)
 		}
 		if manager.subManager.MaxEventBufferSize != 250 {
@@ -926,7 +926,7 @@ func Test_LongpollManager_StartLongpoll_Options(t *testing.T) {
 func Test_LongpollManager_EventExpiration(t *testing.T) {
 	manager, _ := StartLongpoll(Options{
 		LoggingEnabled:            true,
-		MaxLongpollTimeoutSeconds: 120,
+		MaxLongpollTimeoutSeconds: 110,
 		MaxEventBufferSize:        100,
 		EventTimeToLiveSeconds:    1,
 	})
@@ -1333,7 +1333,7 @@ func deleteOnFetchTest(manager *LongpollManager, t *testing.T) {
 func Test_LongpollManager_DeleteOnFetch(t *testing.T) {
 	manager, _ := StartLongpoll(Options{
 		LoggingEnabled:                 true,
-		MaxLongpollTimeoutSeconds:      120,
+		MaxLongpollTimeoutSeconds:      110,
 		MaxEventBufferSize:             100,
 		EventTimeToLiveSeconds:         60,
 		DeleteEventAfterFirstRetrieval: true,
@@ -1344,7 +1344,7 @@ func Test_LongpollManager_DeleteOnFetch(t *testing.T) {
 func Test_LongpollManager_DeleteOnFetch_ForeverTTL(t *testing.T) {
 	manager, _ := StartLongpoll(Options{
 		LoggingEnabled:                 true,
-		MaxLongpollTimeoutSeconds:      120,
+		MaxLongpollTimeoutSeconds:      110,
 		MaxEventBufferSize:             100,
 		EventTimeToLiveSeconds:         forever,
 		DeleteEventAfterFirstRetrieval: true,
@@ -1358,7 +1358,7 @@ func Test_LongpollManager_DeleteOnFetch_SkipBuffering(t *testing.T) {
 	// on the server.
 	manager, _ := StartLongpoll(Options{
 		LoggingEnabled:                 true,
-		MaxLongpollTimeoutSeconds:      120,
+		MaxLongpollTimeoutSeconds:      110,
 		MaxEventBufferSize:             100,
 		EventTimeToLiveSeconds:         60 * 10,
 		DeleteEventAfterFirstRetrieval: true,
@@ -1422,7 +1422,7 @@ func Test_LongpollManager_PurgingOldCategories(t *testing.T) {
 	// After any activity we check to see if it's time to call purge.
 	manager, _ := StartLongpoll(Options{
 		LoggingEnabled:            true,
-		MaxLongpollTimeoutSeconds: 120,
+		MaxLongpollTimeoutSeconds: 110,
 		MaxEventBufferSize:        100,
 		EventTimeToLiveSeconds:    1,
 	})
@@ -1490,7 +1490,7 @@ func Test_LongpollManager_PurgingOldCategories_Inactivity(t *testing.T) {
 	// check regardless of activity.
 	manager, _ := StartLongpoll(Options{
 		LoggingEnabled:            true,
-		MaxLongpollTimeoutSeconds: 120,
+		MaxLongpollTimeoutSeconds: 110,
 		MaxEventBufferSize:        100,
 		EventTimeToLiveSeconds:    1,
 	})
