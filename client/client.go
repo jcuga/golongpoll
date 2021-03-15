@@ -58,9 +58,9 @@ type Client struct {
 	events chan *golongpoll.Event
 	// Flag that signals when the event polling goroutine should quit.
 	runID uint64
-	// flag whetehr or not Client.Start has been called--enforces use-only-once.
+	// flag whether or not Client.Start has been called--enforces use-only-once.
 	started bool
-	// flag whetehr or not Client.Stop has been called--enforces use-only-once.
+	// flag whether or not Client.Stop has been called--enforces use-only-once.
 	stopped bool
 }
 
