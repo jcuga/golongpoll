@@ -20,37 +20,24 @@ const (
 	forever = -1001
 )
 
-// TODO: update all public data comments to reflect latest usage.
-// LongpollManager provides an interface to interact with the internal
-// longpolling pup-sub goroutine.
+// LongpollManager is used to interact with the internal longpolling pup-sub
+// goroutine that is launched via StartLongpoll(Options).
 //
-// This allows you to publish events via Publish()
-// If for some reason you want to stop the pub-sub goroutine at any time
-// you can call Shutdown() and all longpolling will be disabled.  Note that the
-// pub-sub goroutine will exit on program exit, so for most simple programs,
-// calling Shutdown() is not necessary.
-//
-// A LongpollManager is created with each subscriptionManager that gets created
-// by calls to manager := StartLongpoll(options)
-// This interface also exposes the HTTP handler that client code can attach to
-// a URL like so:
-//		mux := http.NewServeMux()
-//		mux.HandleFunc("/custom/path/to/events", manager.SubscriptionHandler)
-// Note, this http handler can be wrapped by another function (try capturing the
-// manager in a closure) to add additional validation, access control, or other
-// functionality on top of the subscription handler.
-//
-// You can have another http handler publish events by capturing the manager in
-// a closure and calling manager.Publish() from inside a http handler.  See the
-// advanced example (examples/advanced/advanced.go)
+// LongpollManager.SubscriptionHandler can be served directly or wrapped in an
+// Http handler to add custom behavior like authentication. Events can be
+// published via LongpollManager.Publish(). The manager can be stopped via
+// Shutdown() or ShutdownWithTimeout(seconds int).
 //
 // If for some reason you want multiple goroutines handling different pub-sub
-// channels, you can simply create multiple LongpollManagers.
+// channels, you can simply create multiple LongpollManagers and serve their
+// subscription handlers on separate URLs.
 type LongpollManager struct {
 	subManager *subscriptionManager
 	eventsIn   chan<- *Event
 	stopSignal chan<- bool
-	// TODO: comment me
+	// SubscriptionHandler is a Http handler function that can be served
+	// directly or wrapped within another handler function that adds additional
+	// behavior like authentication or business logic.
 	SubscriptionHandler func(w http.ResponseWriter, r *http.Request)
 	// flag whether or not StartLongpoll has been called
 	started bool
@@ -59,46 +46,11 @@ type LongpollManager struct {
 	stopped bool
 }
 
-// AddOn provides a way to add behavior to longpolling.
-// For example: FilePersistorAddOn in addons/persistence/file.go provides a way
-// to persist events to file to reuse across LongpollManager runs.
-type AddOn interface {
-	// OnLongpollStart is called from StartLongpoll() before LongpollManager's
-	// run goroutine starts. This should return a channel of events to
-	// pre-populate within the manager. If Options.EventTimeToLiveSeconds
-	// is set, then events that already too old will be skipped.
-	// AddOn implementers can provide their own pre-filtering of events
-	// based on the TTL for efficiency to avoid sending expired events on
-	// this channel in the first place.
-	//
-	// The AddOn must close the returned channel when it is done sending
-	// initial events to it as the LongpollManager will read from the
-	// channel until it is closed. The LongpollManager's main goroutine
-	// will not launch until after all data is read from this channel.
-	// NOTE: if an AddOn does not wish to pre-populate any events, then
-	// simply return an empty channel that is already closed.
-	OnLongpollStart() <-chan *Event
-
-	// OnPublish will be called with any event published by the LongpollManager.
-	// Note that the manager blocks on this function completing, so if
-	// an AddOn is going to perform any slow operations like a file write,
-	// database insert, or a network call, then it should do so it a separate
-	// goroutine to avoid blocking the manager. See FilePersistorAddOn for an
-	// example of how OnPublish can do its work in its own goroutine.
-	OnPublish(*Event)
-
-	// OnShutdown will be called on LongpollManager.Shutdown().
-	// AddOns can perform any cleanup or flushing before exit.
-	// The LongpollManager will block on this function during shutdown.
-	// Example use: FilePersistorAddOn will flush any buffered file write data
-	// to disk on shutdown.
-	OnShutdown()
-}
-
 // Publish an event for a given subscription category.  This event can have any
 // arbitrary data that is convert-able to JSON via the standard's json.Marshal()
 // the category param must be a non-empty string no longer than 1024,
-// otherwise you get an error.
+// otherwise you get an error. Cannot be called after LongpollManager.Shutdown()
+// or LongpollManager.ShutdownWithTimeout(seconds int).
 func (m *LongpollManager) Publish(category string, data interface{}) error {
 	if !m.started {
 		panic("LongpollManager cannot call Publish, never started. LongpollManager must be created via StartLongPoll(Options).")
@@ -129,7 +81,7 @@ func (m *LongpollManager) Publish(category string, data interface{}) error {
 // In addition to allowing a graceful shutdown, this can be useful if you want
 // to turn off longpolling without terminating your program.
 // After a shutdown, you can't call Publish() or get any new results from the
-// SubscriptionHandler.  Multiple calls to this function on the same manager will
+// SubscriptionHandler. Multiple calls to this function on the same manager will
 // result in a panic.
 func (m *LongpollManager) Shutdown() {
 	if m.stopped {
@@ -147,7 +99,8 @@ func (m *LongpollManager) Shutdown() {
 
 // ShutdownWithTimeout will call Shutdown but only block for a provided
 // amount of time when waiting for the shutdown to complete.
-// Returns an error on timeout, otherwise nil.
+// Returns an error on timeout, otherwise nil. This can only be called once
+// otherwise it will panic.
 func (m *LongpollManager) ShutdownWithTimeout(seconds int) error {
 	if m.stopped {
 		panic("LongpollManager cannot be stopped more than once.")
