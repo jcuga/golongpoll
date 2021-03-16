@@ -16,9 +16,12 @@ import (
 // via longpolling.  The Data payload can be anything that is JSON serializable
 // via the encoding/json library's json.Marshal function.
 type Event struct {
-	// Timestamp is milliseconds since epoch to match javascrits Date.getTime()
-	Timestamp int64  `json:"timestamp"`
-	Category  string `json:"category"`
+	// Timestamp is milliseconds since epoch to match javascrits Date.getTime().
+	// This is the timestamp when the event was published.
+	Timestamp int64 `json:"timestamp"`
+	// Category this event belongs to. Clients subscribe to a given category.
+	Category string `json:"category"`
+	// Event data payload.
 	// NOTE: Data can be anything that is able to passed to json.Marshal()
 	Data interface{} `json:"data"`
 	// Event ID, used in conjunction with Timestamp to get a complete timeline
