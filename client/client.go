@@ -92,7 +92,7 @@ func NewClient(opts ClientOptions) (*Client, error) {
 
 	client := &Client{
 		options: opts,
-		events:  make(chan *golongpoll.Event, 25),
+		events:  make(chan *golongpoll.Event, 100),
 	}
 
 	return client, nil

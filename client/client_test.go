@@ -14,7 +14,6 @@ import (
 )
 
 func testEventsManager() *golongpoll.LongpollManager {
-	var err error
 	eventsManager, err := golongpoll.StartLongpoll(golongpoll.Options{
 		LoggingEnabled: true,
 	})
