@@ -20,6 +20,14 @@ type AddOn interface {
 	// will not launch until after all data is read from this channel.
 	// NOTE: if an AddOn does not wish to pre-populate any events, then
 	// simply return an empty channel that is already closed.
+	//
+	// IMPORTANT: the events sent to the returned channel must be in
+	// chronological order! The longpoll manager will panic if events are sent
+	// out of order. The reason for this is that the longpoll manager
+	// does not have to sort published events internally since publishing
+	// happens in real time. The fact that events from Publish naturally
+	// have chronological timestamps allows for many efficiencies and
+	// simplifications.
 	OnLongpollStart() <-chan *Event
 
 	// OnPublish will be called with any event published by the LongpollManager.
