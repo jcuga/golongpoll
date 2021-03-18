@@ -84,7 +84,7 @@ func NewFilePersistor(filename string, writeBufferSize int, writeFlushPeriodSeco
 // until the channel is closed.
 func (fp *FilePersistorAddOn) OnLongpollStart() <-chan *Event {
 	// return a channel to send initial events to.
-	ch := make(chan *Event)
+	ch := make(chan *Event, 100)
 	// populate input events channel in own goroutine, which will
 	// call close(ch) once it sends all events.
 	go fp.getOnStartInputEvents(ch)

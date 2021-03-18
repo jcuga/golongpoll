@@ -37,3 +37,36 @@ type AddOn interface {
 	// to disk on shutdown.
 	OnShutdown()
 }
+
+// TrivialAddOn is a trivial implementation of the AddOn interface.
+// AddOn implementers can embed the TrivialAddOn if they only care to
+// implement some of the required functions.
+//
+// For example, if you wanted an addon that simply logged when an event
+// is published, you could do:
+//
+// type LoggerAddOn struct {
+//   TrivialAddOn
+// }
+//
+// func (lad *LoggerAddOn) OnPublish(event *Event) {
+//   log.Printf("Event was published: %v\n", event)
+// }
+type TrivialAddOn struct{}
+
+// OnPublish does nothing
+func (tad *TrivialAddOn) OnPublish(event *Event) {
+	return
+}
+
+// OnShutdown does nothing
+func (tad *TrivialAddOn) OnShutdown() {
+	return
+}
+
+// OnLongpollStart returns an empty, closed events channel.
+func (tad *TrivialAddOn) OnLongpollStart() <-chan *Event {
+	trivial := make(chan *Event)
+	close(trivial)
+	return trivial
+}
