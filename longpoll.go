@@ -237,9 +237,20 @@ func StartLongpoll(opts Options) (*LongpollManager, error) {
 			cutoffTime = timeToEpochMilliseconds(time.Now()) - int64(subManager.EventTimeToLiveSeconds*1000)
 		}
 
+		currentEventTime := int64(0)
 		for {
 			event, ok := <-startChan
 			if ok {
+				if event.Timestamp < currentEventTime {
+					// The internal datastructures assume data is added in chonological order.
+					// Otherwise, lots of code would have to pay the penalty of ensuring
+					// data is ordered and support insert-then-sort which I'm not prepared to
+					// support.
+					panic("Events supplied via AddOn.OnLongpollStart must be in chronological order (oldest first).")
+				}
+
+				currentEventTime = event.Timestamp
+
 				if event.Timestamp > cutoffTime {
 					subManager.handleNewEvent(event)
 				}
