@@ -317,14 +317,14 @@ func getLongPollSubscriptionHandler(maxTimeoutSeconds int, subscriptionRequests 
 		w.Header().Set("Pragma", "no-cache")                                   // HTTP 1.0.
 		w.Header().Set("Expires", "0")                                         // Proxies.
 		if err != nil || timeout > maxTimeoutSeconds || timeout < 1 {
-			log.Printf("WARN - golongpoll.subscriptionHandler - Invalid timeout param. Must be 1-%d. Got: %q.\n",
+			log.Printf("WARN - golongpoll.subscriptionHandler - Invalid or missing 'timeout' param. Must be 1-%d. Got: %q.\n",
 				maxTimeoutSeconds, r.URL.Query().Get("timeout"))
-			io.WriteString(w, fmt.Sprintf("{\"error\": \"Invalid timeout arg.  Must be 1-%d.\"}", maxTimeoutSeconds))
+			io.WriteString(w, fmt.Sprintf("{\"error\": \"Invalid or missing 'timeout' arg.  Must be 1-%d.\"}", maxTimeoutSeconds))
 			return
 		}
 		category := r.URL.Query().Get("category")
 		if len(category) == 0 || len(category) > 1024 {
-			log.Printf("WARN - golongpoll.subscriptionHandler - Invalid subscription category, must be 1-1024 characters long.\n")
+			log.Printf("WARN - golongpoll.subscriptionHandler - Invalid or missing subscription 'category', must be 1-1024 characters long.\n")
 			io.WriteString(w, "{\"error\": \"Invalid subscription category, must be 1-1024 characters long.\"}")
 			return
 		}
@@ -340,7 +340,7 @@ func getLongPollSubscriptionHandler(maxTimeoutSeconds int, subscriptionRequests 
 			if parseError != nil {
 				log.Printf("WARN - golongpoll.subscriptionHandler - Error parsing since_time arg. Parm Value: %s, Error: %s.\n",
 					lastEventTimeParam, parseError)
-				io.WriteString(w, "{\"error\": \"Invalid since_time arg.\"}")
+				io.WriteString(w, "{\"error\": \"Invalid 'since_time' arg.\"}")
 				return
 			}
 		}
@@ -355,7 +355,7 @@ func getLongPollSubscriptionHandler(maxTimeoutSeconds int, subscriptionRequests 
 			// want to miss the other events with the same timestamp (issue #19).
 			if len(lastEventTimeParam) == 0 {
 				log.Printf("WARN - golongpoll.subscriptionHandler - Invalid request: last_id without since_time.\n")
-				io.WriteString(w, "{\"error\": \"Must provide since_time arg when providing last_id.\"}")
+				io.WriteString(w, "{\"error\": \"Must provide 'since_time' arg when providing 'last_id'.\"}")
 				return
 			}
 
@@ -363,7 +363,7 @@ func getLongPollSubscriptionHandler(maxTimeoutSeconds int, subscriptionRequests 
 
 			if uuidErr != nil {
 				log.Printf("WARN - golongpoll.subscriptionHandler - Invalid request: last_id was not a valid UUID.\n")
-				io.WriteString(w, "{\"error\": \"Param last_id was not a valid UUID.\"}")
+				io.WriteString(w, "{\"error\": \"Param 'last_id' was not a valid UUID.\"}")
 				return
 			}
 
