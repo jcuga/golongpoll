@@ -34,6 +34,9 @@ type ClientOptions struct {
 	// reattempt polling the server after a failure response.
 	// Defaults to 30 seconds.
 	ReattemptWaitSeconds uint
+	// SuccessWaitSeconds is how long to wait, in seconds, after receiving
+	// events before requesting more events. Defaults to zero, no wait.
+	SuccessWaitSeconds uint
 	// HttpClient is an optional http.Client to use when polling the server.
 	// Defaults to go's deafult http.Client.
 	HttpClient *http.Client
@@ -52,12 +55,17 @@ type ClientOptions struct {
 
 // Client for polling a longpoll server.
 type Client struct {
+	// Flag that signals when the event polling goroutine should quit.
+	// NOTE: using sys/atomic.AddUint64 on fields require them to be 64bit
+	// aligned. The start of an allocated struct are guaranteed to be aligned,
+	// so placing at start here fixes a cryptic panic I got after adding
+	// a new field to this struct and then runID kept breaking.
+	// see: https://stackoverflow.com/questions/28670232/atomic-addint64-causes-invalid-memory-address-or-nil-pointer-dereference
+	runID uint64
 	// options dictating client behavior
 	options ClientOptions
 	// Populated with received longpoll events.
 	events chan *golongpoll.Event
-	// Flag that signals when the event polling goroutine should quit.
-	runID uint64
 	// flag whether or not Client.Start has been called--enforces use-only-once.
 	started bool
 	// flag whether or not Client.Stop has been called--enforces use-only-once.
@@ -197,6 +205,10 @@ func (c *Client) Start(pollSince time.Time) <-chan *golongpoll.Event {
 					}
 
 					c.events <- event
+				}
+
+				if c.options.SuccessWaitSeconds > 0 {
+					time.Sleep(time.Duration(c.options.SuccessWaitSeconds) * time.Second)
 				}
 			} else {
 				// Only push timestamp forward if its greater than the last we checked
