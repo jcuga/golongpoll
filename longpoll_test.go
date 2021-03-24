@@ -347,7 +347,7 @@ func Test_LongpollManager_WebClient_InvalidRequests(t *testing.T) {
 	}
 	// Also note how it says "1-110", so our custom timeout arg of 110 was
 	// used
-	if w.Body.String() != "{\"error\": \"Invalid timeout arg.  Must be 1-110.\"}" {
+	if w.Body.String() != "{\"error\": \"Invalid or missing 'timeout' arg.  Must be 1-110.\"}" {
 		t.Errorf("Unexpected response: %q", w.Body.String())
 	}
 
@@ -358,7 +358,7 @@ func Test_LongpollManager_WebClient_InvalidRequests(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Errorf("SubscriptionHandler didn't return %v", http.StatusOK)
 	}
-	if w.Body.String() != "{\"error\": \"Invalid timeout arg.  Must be 1-110.\"}" {
+	if w.Body.String() != "{\"error\": \"Invalid or missing 'timeout' arg.  Must be 1-110.\"}" {
 		t.Errorf("Unexpected response: %q", w.Body.String())
 	}
 
@@ -369,7 +369,7 @@ func Test_LongpollManager_WebClient_InvalidRequests(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Errorf("SubscriptionHandler didn't return %v", http.StatusOK)
 	}
-	if w.Body.String() != "{\"error\": \"Invalid timeout arg.  Must be 1-110.\"}" {
+	if w.Body.String() != "{\"error\": \"Invalid or missing 'timeout' arg.  Must be 1-110.\"}" {
 		t.Errorf("Unexpected response: %q", w.Body.String())
 	}
 
@@ -380,7 +380,7 @@ func Test_LongpollManager_WebClient_InvalidRequests(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Errorf("SubscriptionHandler didn't return %v", http.StatusOK)
 	}
-	if w.Body.String() != "{\"error\": \"Invalid timeout arg.  Must be 1-110.\"}" {
+	if w.Body.String() != "{\"error\": \"Invalid or missing 'timeout' arg.  Must be 1-110.\"}" {
 		t.Errorf("Unexpected response: %q", w.Body.String())
 	}
 
@@ -428,7 +428,7 @@ func Test_LongpollManager_WebClient_InvalidRequests(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Errorf("SubscriptionHandler didn't return %v", http.StatusOK)
 	}
-	if w.Body.String() != "{\"error\": \"Invalid since_time arg.\"}" {
+	if w.Body.String() != "{\"error\": \"Invalid 'since_time' arg.\"}" {
 		t.Errorf("Unexpected response: %q", w.Body.String())
 	}
 
