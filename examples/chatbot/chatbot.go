@@ -165,46 +165,44 @@ func chatBotExampleHomepage(w http.ResponseWriter, r *http.Request) {
     <!-- NOTE: jquery is NOT requried to use golongpoll or the golongpoll javascript client.
 	Including here for shorter/lazier example. -->
     <script src="http://code.jquery.com/jquery-1.11.3.min.js"></script>
-<script>
+	<script>
+		var client = golongpoll.newClient({
+			url: "/chatbot/events",
+			category: "from-chatbot",
+			// NOTE: without setting sinceTime here, defaults to only new events (sinceTime of now)
+			loggingEnabled: true,
+			onEvent: function (event) {
+				$("#conversation").append("<p class=\"msg-bot\">" + event.data + "</p>");
+			},
+		});
 
-	var client = golongpoll.newClient({
-		url: "/chatbot/events",
-		category: "from-chatbot",
-		// NOTE: without setting sinceTime here, defaults to only new events (sinceTime of now)
-		loggingEnabled: true,
-		onEvent: function (event) {
-			$("#conversation").append("<p class=\"msg-bot\">" + event.data + "</p>");
-		},
-	});
+		// newClient returns null if failed.
+		if (!client) {
+			alert("Failed to create golongpoll client.");
+		} else {
+			console.log(client);
+		}
 
-	// newClient returns null if failed.
-	if (!client) {
-		alert("Failed to create golongpoll client.");
-	} else {
-		console.log(client);
-	}
+		function send() {
+			var data = $("#send-input").val();
+			if (data.length == 0) {
+				alert("input cannot be empty");
+				return;
+			}
 
-    function send() {
-        var data = $("#send-input").val();
-        if (data.length == 0) {
-            alert("input cannot be empty");
-            return;
-        }
+			var jqxhr = $.get( "/chatbot/send", { data: data })
+				.done(function() {
+					$("#conversation").append("<p class=\"msg-me\">" + data + "</p>");
+					$("#send-input").val('');
 
-        var jqxhr = $.get( "/chatbot/send", { data: data })
-            .done(function() {
-                $("#conversation").append("<p class=\"msg-me\">" + data + "</p>");
-                $("#send-input").val('');
+				})
+				.fail(function() {
+				alert( "post request failed" );
+				});
+		}
 
-            })
-            .fail(function() {
-              alert( "post request failed" );
-            });
-    }
-
-    $("#send-btn").click(send);
-
-</script>
+		$("#send-btn").click(send);
+	</script>
 </body>
 </html>`)
 }

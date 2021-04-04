@@ -34,4 +34,6 @@ advanced
 events.data
 chatbot
 examples/chatbot_example
+examples/filepersist_example
+examples/filepersist_example.data
 
