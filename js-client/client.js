@@ -11,7 +11,8 @@ var golongpoll = {
             sucessWaitSeconds=0,
             basicAuthUsername="",
             basicAuthPassword="",
-            loggingEnabled=false
+            loggingEnabled=false,
+            extraRequestHeaders=[]
         }) {
             if (!url) {
                 client.log("newClient() requires non-empty 'url' option.");
@@ -62,6 +63,7 @@ var golongpoll = {
                 basicAuthUsername: basicAuthUsername || null,
                 basicAuthPassword: basicAuthPassword || null,
                 loggingEnabled: loggingEnabled,
+                extraRequestHeaders: extraRequestHeaders,
                 log: function (msg) {
                     if (this.loggingEnabled === true) {
                         if (typeof window.console == 'undefined') { return; };
@@ -85,6 +87,7 @@ var golongpoll = {
                 var pollUrl = client.url + "?" + query
 
                 var xmlHttp = new XMLHttpRequest();
+
                 xmlHttp.onreadystatechange = function () {
                     var req = xmlHttp;
                         if (req.readyState === 4) {
@@ -157,6 +160,12 @@ var golongpoll = {
                 };
                 // NOTE: includes optional user/password for basic auth
                 xmlHttp.open("GET", pollUrl, true, client.basicAuthUsername, client.basicAuthPassword); // true for asynchronous
+
+                // Add any optional request headers
+                for (var i = 0; i < client.extraRequestHeaders.length; i++) {
+                    xmlHttp.setRequestHeader(client.extraRequestHeaders[i].key, client.extraRequestHeaders[i].value);
+                }
+
                 xmlHttp.send(null);
             })();
 
