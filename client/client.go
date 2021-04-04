@@ -51,6 +51,16 @@ type ClientOptions struct {
 	// Optional callback for HTTP longpoll request failures.
 	// The client will stop if the provided callback returns false.
 	OnFailure func(err error) bool
+	// ExtraHeaders has optional HTTP headers to include in lonpoll requests.
+	// Useful if you wrap LongpollManager.SubscriptionHandler with additional
+	// authentication or other logic that uses headers.
+	ExtraHeaders []HeaderKeyValue
+}
+
+// HeaderKeyValue is a HTTP header key-value pair.
+type HeaderKeyValue struct {
+	Key   string
+	Value string
 }
 
 // Client for polling a longpoll server.
@@ -309,6 +319,12 @@ func (c Client) fetchEvents(since int64, lastID string) (*pollResponse, error) {
 	}
 	if len(c.options.BasicAuthUsername) > 0 && len(c.options.BasicAuthPassword) > 0 {
 		req.SetBasicAuth(c.options.BasicAuthUsername, c.options.BasicAuthPassword)
+	}
+
+	// Optional headers to include in request--can be used for extra authentication
+	// if the LongpollManager.SubscriptionHandler is wrapped with additional checks.
+	for _, kvpair := range c.options.ExtraHeaders {
+		req.Header.Add(kvpair.Key, kvpair.Value)
 	}
 
 	resp, err := c.options.HttpClient.Do(req)

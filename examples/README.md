@@ -32,13 +32,10 @@ Then visit: `http://127.0.0.1:8102/filepersist`
 
 
 
-
-2) client (js go) header(s) option plural
-
-3) custom addon example
+TODO:
+3) custom addon example--maybe counter? perhaps not bother...
 
 4) auth example -- basic via opts or basic via header
-
 TODO: client and js client optional header(s) to send when making requests
     >> for any extra auth/stuff
     >> test by using basic auth this way instead
@@ -50,7 +47,7 @@ then, remaining examples:
     >> or just test and not include?
 
 all of these as chatbotplus:
-* basic auth
+* basic auth--or custom auth via mock/hardcoded header token?
 * actual json not just str--use type swtich idom
 * file persist
 

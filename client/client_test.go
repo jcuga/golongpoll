@@ -409,3 +409,91 @@ func onFailureTestCase(t *testing.T, client *Client) {
 		t.Error("Should have closed channel by now.")
 	}
 }
+
+// Same as TestClient_PastEvents but with a wrapped subscription handler that
+// will test the header values.
+func TestClient_ExtraHeaders(t *testing.T) {
+	category := "testing"
+	u, manager := testHeadersServer(t)
+	defer manager.Shutdown()
+
+	opts := ClientOptions{
+		Url:                  u,
+		Category:             category,
+		PollTimeoutSeconds:   1,
+		ReattemptWaitSeconds: 1,
+		LoggingEnabled:       true,
+		ExtraHeaders:         []HeaderKeyValue{{Key: "howdy", Value: "doody"}, {Key: "hi", Value: "MOM"}},
+	}
+	c, err := NewClient(opts)
+
+	if err != nil {
+		t.Fatalf("Error creating client: %v", err)
+	}
+
+	expectedResults := []string{"test1", "test2", "test3"}
+	for _, result := range expectedResults {
+		manager.Publish(category, result)
+		time.Sleep(time.Duration(100) * time.Millisecond)
+	}
+
+	events := c.Start(time.Now().Add(-5 * time.Second))
+
+	for i := 0; i < len(expectedResults); i++ {
+		select {
+		case e, ok := <-events:
+			if !ok {
+				c.Stop()
+				t.Fatal("Unexpected channel close.")
+			}
+			data, ok := e.Data.(string)
+			if !ok {
+				t.Errorf("Expected data to be a sring, got: %T", e.Data)
+			} else if data != expectedResults[i] {
+				t.Errorf("Unexpected data value, expected: %v, got: %v", expectedResults[i], data)
+			}
+
+		case <-time.After(3 * time.Second):
+			t.Error("Should have seen events.")
+		}
+	}
+
+	c.Stop()
+}
+
+func testHeadersServer(t *testing.T) (url.URL, *golongpoll.LongpollManager) {
+	eventsManager := testEventsManager()
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/events", func(w http.ResponseWriter, r *http.Request) {
+
+		val := r.Header.Get("howdy")
+		if val != "doody" {
+			t.Errorf("Unexpected/missing header value. Expected: 'dooty', got: %q", val)
+		}
+
+		val = r.Header.Get("hi")
+		if val != "MOM" {
+			t.Errorf("Unexpected/missing header value. Expected: 'MOM', got: %q", val)
+		}
+
+		eventsManager.SubscriptionHandler(w, r)
+	})
+
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		panic(fmt.Sprintf("Failed to listen on address, error: %v", err))
+	}
+
+	server := &http.Server{Handler: mux}
+
+	fmt.Println("Tests event server listening on", listener.Addr().String())
+
+	go func() {
+		panic(server.Serve(listener))
+	}()
+
+	u, _ := url.Parse("http://" + listener.Addr().String() + "/events")
+
+	return *u, eventsManager
+}

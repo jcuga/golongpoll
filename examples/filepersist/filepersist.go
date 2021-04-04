@@ -98,6 +98,9 @@ func filePersistorExampleHomepage(w http.ResponseWriter, r *http.Request) {
 		// get events since last hour
 		sinceTime: Date.now() - (60 * 60 * 1000),
 		loggingEnabled: true,
+		// Not needed in this example, but showing that you can provide extra headers which can be useful
+		// if you wrapped the LongpollManager.SubscriptionHandler with some authentication layer.
+		extraRequestHeaders: [ {key: "Extra-Header-1", value: "One"}, { key: "Extra-Header-2", value: "Two"}],
 		onEvent: function (event) {
 			$("#events").append("<li>" + (new Date(event.timestamp).toLocaleTimeString()) + ": " + event.data + "</li>");
 		},
