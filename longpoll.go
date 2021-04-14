@@ -270,7 +270,7 @@ func getLongPollSubscriptionHandler(maxTimeoutSeconds int, subscriptionRequests 
 		// event that a client crashes or the connection goes down.  We don't
 		// need to wait around to fulfill a subscription if no one is going to
 		// receive it
-		disconnectNotify := w.(http.CloseNotifier).CloseNotify()
+		disconnectNotify := r.Context().Done()
 		select {
 		case <-time.After(time.Duration(timeout) * time.Second):
 			// Lets the subscription manager know it can discard this request's

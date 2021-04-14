@@ -1,7 +1,7 @@
 package golongpoll
 
 import (
-	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -9,29 +9,6 @@ import (
 	"testing"
 	"time"
 )
-
-type CloseNotifierRecorder struct {
-	httptest.ResponseRecorder
-	CloseNotifier chan bool
-}
-
-// As it turns out, httptest.ResponseRecorder (returned by httptest.NewRecorder)
-// does not support CloseNotify, so mock it to avoid panics about not supporting
-// the interface
-func (cnr *CloseNotifierRecorder) CloseNotify() <-chan bool {
-	return cnr.CloseNotifier
-}
-
-func NewCloseNotifierRecorder() *CloseNotifierRecorder {
-	return &CloseNotifierRecorder{
-		httptest.ResponseRecorder{
-			HeaderMap: make(http.Header),
-			Body:      new(bytes.Buffer),
-			Code:      200,
-		},
-		make(chan bool, 1),
-	}
-}
 
 func Test_LongpollManager_CreateManager(t *testing.T) {
 	manager, err := CreateManager()
@@ -486,7 +463,7 @@ func Test_LongpollManager_WebClient_NoEventsSoTimeout(t *testing.T) {
 	// so this will wait 2 seconds (because timeout param = 2)
 	// and then come back with a timeout response
 	req, _ := http.NewRequest("GET", "?timeout=2&category=veggies", nil)
-	w := NewCloseNotifierRecorder()
+	w := httptest.NewRecorder()
 	subscriptionHandler.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Errorf("SubscriptionHandler didn't return %v", http.StatusOK)
@@ -518,7 +495,10 @@ func Test_LongpollManager_WebClient_Disconnect_RemoveClientSub(t *testing.T) {
 	// This request has timeout of 5 seconds, but we're going to simulate a
 	// disconnect in 2 seconds which is earlier.
 	req, _ := http.NewRequest("GET", "?timeout=5&category=veggies", nil)
-	w := NewCloseNotifierRecorder()
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	defer cancel()
+	req = req.WithContext(ctx)
+	w := httptest.NewRecorder()
 	// As of go 1.7, calls to t.Error, t.Fatal, after a test exits causes a panic.
 	// Before, these were suppressed.  So as it turns out, this test's goroutine
 	// that spawns here was outliving the test.  Now let's make the test body
@@ -534,9 +514,7 @@ func Test_LongpollManager_WebClient_Disconnect_RemoveClientSub(t *testing.T) {
 		if val, _ := manager.subManager.ClientSubChannels["veggies"]; len(val) != 1 {
 			t.Errorf("Expected sub channel to have one client subscribed")
 		}
-		time.Sleep(time.Duration(1) * time.Second)
-		w.CloseNotifier <- true
-		time.Sleep(time.Duration(1) * time.Second)
+		time.Sleep(time.Duration(2) * time.Second)
 		// Confirm that the subscription entry no longer exists.
 		// Before, this test asserted that the entry ('veggie' key in the map)
 		// existed, but the value listed no clients.  But code was changed to auto
@@ -585,7 +563,10 @@ func Test_LongpollManager_WebClient_Disconnect_TerminateHttp(t *testing.T) {
 	// and confirm that the disconnect forced the subscription handler
 	// to return early and thus we get the expected published value.
 	req, _ := http.NewRequest("GET", "?timeout=5&category=veggies", nil)
-	w := NewCloseNotifierRecorder()
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	defer cancel()
+	req = req.WithContext(ctx)
+	w := httptest.NewRecorder()
 
 	go func() {
 		time.Sleep(time.Duration(3) * time.Second)
@@ -601,9 +582,7 @@ func Test_LongpollManager_WebClient_Disconnect_TerminateHttp(t *testing.T) {
 		if val, _ := manager.subManager.ClientSubChannels["veggies"]; len(val) != 1 {
 			t.Errorf("Expected sub channel to have one client subscribed")
 		}
-		time.Sleep(time.Duration(1) * time.Second)
-		w.CloseNotifier <- true
-		time.Sleep(time.Duration(2) * time.Second)
+		time.Sleep(time.Duration(3) * time.Second)
 		// Confirm that our test channel has the value from our web handler and
 		// not from our goroutine
 		select {
@@ -628,7 +607,7 @@ func Test_LongpollManager_WebClient_HasEvents(t *testing.T) {
 	// so this will wait for a publish or timeout (in this case we'll get
 	// something)
 	req, _ := http.NewRequest("GET", "?timeout=30&category=veggies", nil)
-	w := NewCloseNotifierRecorder()
+	w := httptest.NewRecorder()
 	// Publish two events, only the second is for our subscription category
 	// Note how these events occur after the client subscribed
 	// if they occurred before, since we don't provide a since_time url param
@@ -664,7 +643,7 @@ func Test_LongpollManager_WebClient_HasEvents(t *testing.T) {
 	// Note how since there's no since_time url param, we default to now,
 	// and thus don't see the previous event from our last http request
 	req, _ = http.NewRequest("GET", "?timeout=2&category=veggies", nil)
-	w = NewCloseNotifierRecorder()
+	w = httptest.NewRecorder()
 	subscriptionHandler.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Errorf("SubscriptionHandler didn't return %v", http.StatusOK)
@@ -687,7 +666,7 @@ func Test_LongpollManager_WebClient_HasEvents(t *testing.T) {
 	// our previously seen event
 	req, _ = http.NewRequest("GET", fmt.Sprintf("?timeout=2&category=veggies&since_time=%d",
 		timeToEpochMilliseconds(startTime)), nil)
-	w = NewCloseNotifierRecorder()
+	w = httptest.NewRecorder()
 	subscriptionHandler.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Errorf("SubscriptionHandler didn't return %v", http.StatusOK)
@@ -712,7 +691,7 @@ func Test_LongpollManager_WebClient_HasEvents(t *testing.T) {
 	// Now ask for any events since our first one, and confirm we get the second
 	// 'veggie' category event
 	req, _ = http.NewRequest("GET", fmt.Sprintf("?timeout=2&category=veggies&since_time=%d", firstEventTime), nil)
-	w = NewCloseNotifierRecorder()
+	w = httptest.NewRecorder()
 	subscriptionHandler.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Errorf("SubscriptionHandler didn't return %v", http.StatusOK)
@@ -733,7 +712,7 @@ func Test_LongpollManager_WebClient_HasEvents(t *testing.T) {
 	// Confirm we get both events when asking for any events since start of test run
 	req, _ = http.NewRequest("GET", fmt.Sprintf("?timeout=2&category=veggies&since_time=%d",
 		timeToEpochMilliseconds(startTime)), nil)
-	w = NewCloseNotifierRecorder()
+	w = httptest.NewRecorder()
 	subscriptionHandler.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Errorf("SubscriptionHandler didn't return %v", http.StatusOK)
@@ -775,7 +754,7 @@ func Test_LongpollManager_WebClient_HasBufferedEvents(t *testing.T) {
 	// But we ask for any events since the start of this test case
 	req, _ := http.NewRequest("GET", fmt.Sprintf("?timeout=2&category=veggies&since_time=%d",
 		timeToEpochMilliseconds(startTime)), nil)
-	w := NewCloseNotifierRecorder()
+	w := httptest.NewRecorder()
 	subscriptionHandler.ServeHTTP(w, req)
 
 	// Confirm we got the correct event
@@ -1082,7 +1061,7 @@ func Test_LongpollManager_EventExpiration(t *testing.T) {
 	// client using a really old since param
 	subscriptionHandler := ajaxHandler(manager.SubscriptionHandler)
 	req, _ := http.NewRequest("GET", "?timeout=2&category=veggie", nil)
-	w := NewCloseNotifierRecorder()
+	w := httptest.NewRecorder()
 	subscriptionHandler.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Errorf("SubscriptionHandler didn't return %v", http.StatusOK)
@@ -1132,7 +1111,7 @@ func Test_LongpollManager_EventExpiration(t *testing.T) {
 	// Now force the expire check on the last two fruit events.
 	// Enough time has elapsed that everything should be gone by now.
 	req, _ = http.NewRequest("GET", "?timeout=1&category=fruit", nil)
-	w = NewCloseNotifierRecorder()
+	w = httptest.NewRecorder()
 	subscriptionHandler.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Errorf("SubscriptionHandler didn't return %v", http.StatusOK)
@@ -1237,7 +1216,7 @@ func deleteOnFetchTest(manager *LongpollManager, t *testing.T) {
 	sinceTime := timeToEpochMilliseconds(time.Now().Add(-1 * time.Second))
 	subscriptionHandler := ajaxHandler(manager.SubscriptionHandler)
 	req, _ := http.NewRequest("GET", fmt.Sprintf("?timeout=1&category=fruit&since_time=%d", sinceTime), nil)
-	w := NewCloseNotifierRecorder()
+	w := httptest.NewRecorder()
 	subscriptionHandler.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Errorf("SubscriptionHandler didn't return %v", http.StatusOK)
@@ -1301,7 +1280,7 @@ func deleteOnFetchTest(manager *LongpollManager, t *testing.T) {
 	sinceTime = timeToEpochMilliseconds(time.Now().Add(-60 * time.Second))
 	subscriptionHandler = ajaxHandler(manager.SubscriptionHandler)
 	req, _ = http.NewRequest("GET", fmt.Sprintf("?timeout=1&category=veggie&since_time=%d", sinceTime), nil)
-	w = NewCloseNotifierRecorder()
+	w = httptest.NewRecorder()
 	subscriptionHandler.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Errorf("SubscriptionHandler didn't return %v", http.StatusOK)
@@ -1404,7 +1383,7 @@ func Test_LongpollManager_DeleteOnFetch_SkipBuffering(t *testing.T) {
 	// so this will wait until a publish or a timeout, in this case we'll get
 	// an event.
 	req, _ := http.NewRequest("GET", "?timeout=30&category=fruit", nil)
-	w := NewCloseNotifierRecorder()
+	w := httptest.NewRecorder()
 	// Publish two events, only the second is for our subscription category
 	// Note how these events occur after the client subscribed
 	// if they occurred before, since we don't provide a since_time url param
