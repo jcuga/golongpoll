@@ -26,69 +26,88 @@
 package main
 
 import (
+	"context"
 	"fmt"
-	"log"
-	"math/rand"
-	"net/http"
-	"time"
-
 	"github.com/jcuga/golongpoll"
+	"log"
+	"net/http"
+	"os"
+	"os/signal"
+	"time"
 )
 
 func main() {
+	filePersistor, err := golongpoll.NewFilePersistor("/home/pi/code/golongpoll/events.data", 4096, 30)
+	if err != nil {
+		fmt.Printf("Failed to create file persistor, error: %v", err)
+		return
+	}
+
 	manager, err := golongpoll.StartLongpoll(golongpoll.Options{
 		LoggingEnabled: true,
 		// NOTE: if not defined here, other options have reasonable defaults,
 		// so no need specifying options you don't care about
+		AddOn: filePersistor,
 	})
 	if err != nil {
 		log.Fatalf("Failed to create manager: %q", err)
 	}
-	// pump out random events
-	go generateRandomEvents(manager)
-	// Serve our basic example driver webpage
-	http.HandleFunc("/basic", BasicExampleHomepage)
 
+	mux := http.NewServeMux()
+	// Serve our basic example driver webpage
+	mux.HandleFunc("/basic", BasicExampleHomepage)
 	// Serve our event subscription web handler
-	http.HandleFunc("/basic/events", manager.SubscriptionHandler)
+	mux.HandleFunc("/basic/events", manager.SubscriptionHandler)
+	mux.HandleFunc("/basic/publish", getPublishHandler(manager))
+
+	server := &http.Server{Addr: "127.0.0.1:8081", Handler: mux}
 
 	fmt.Println("Serving webpage at http://127.0.0.1:8081/basic")
-	http.ListenAndServe("127.0.0.1:8081", nil)
+	httpDone := make(chan bool)
+	go func() {
+		if err := server.ListenAndServe(); err != nil {
+			// handle err
+			close(httpDone)
+		}
+		sErr := manager.ShutdownWithTimeout(5) // TODO: comment about this
+		if sErr != nil {
+			fmt.Println("Got shutdown error: ", sErr)
+		}
+	}()
 
-	// We'll never get here as long as http.ListenAndServe starts successfully
-	// because it runs until you kill the program (like pressing Control-C)
-	// Buf if you make a stoppable http server, or want to shut down the
-	// internal longpoll manager for other reasons, you can do so via
-	// Shutdown:
-	manager.Shutdown() // Stops the internal goroutine that provides subscription behavior
-	// Again, calling shutdown is a bit silly here since the goroutines will
-	// exit on main() exit.  But I wanted to show you that it is possible.
+	// Setting up signal capturing
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, os.Interrupt)
+
+	// Waiting for SIGINT (pkill -2)
+	<-stop
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := server.Shutdown(ctx); err != nil {
+		// TODO: handle err
+		fmt.Printf("Error shutting down: %v\n", err)
+	}
+
+	fmt.Println("waiting for http done")
+	// Wait for ListenAndServe goroutine to close.
+	<-httpDone
+	fmt.Println("all done for real") // TODO: remove me
 }
 
-func generateRandomEvents(lpManager *golongpoll.LongpollManager) {
-	farmEvents := []string{
-		"Cow says 'Moooo!'",
-		"Duck went 'Quack!'",
-		"Chicken says: 'Cluck!'",
-		"Goat chewed grass.",
-		"Pig went 'Oink! Oink!'",
-		"Horse ate hay.",
-		"Tractor went: Vroom Vroom!",
-		"Farmer ate bacon.",
-	}
-	// every 0-5 seconds, something happens at the farm:
-	for {
-		time.Sleep(time.Duration(rand.Intn(5000)) * time.Millisecond)
-		lpManager.Publish("farm", farmEvents[rand.Intn(len(farmEvents))])
+func getPublishHandler(manager *golongpoll.LongpollManager) func(w http.ResponseWriter, r *http.Request) {
+	// Creates closure that captures the LongpollManager
+	return func(w http.ResponseWriter, r *http.Request) {
+		data := r.URL.Query().Get("data")
+		if len(data) == 0 {
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write([]byte("Missing required URL param 'data'."))
+			return
+		}
+		manager.Publish("echo", data)
 	}
 }
 
-// BasicExampleHomepage provides a webpage that shows events as they happen.
-// In this code you'll see a sample of how to implement longpolling on the
-// client side in javascript.  I used jquery here...
-//
-// I was too lazy to serve this file statically.
-// This is me setting a bad example :)
 func BasicExampleHomepage(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, `
 <html>
@@ -97,21 +116,35 @@ func BasicExampleHomepage(w http.ResponseWriter, r *http.Request) {
 </head>
 <body>
     <h1>golongpoll basic example</h1>
-    <h2>Here's whats happening around the farm:</h2>
+    <input id="publish-input"type="text" /> <button id="publish-btn" onclick="publish()">Publish</button>
+    <h2>Events</h2>
     <ul id="animal-events"></ul>
 <script src="http://code.jquery.com/jquery-1.11.3.min.js"></script>
 <script>
 
+    function publish() {
+        var data = $("#publish-input").val();
+        if (data.length == 0) {
+            alert("input cannot be empty");
+            return;
+        }
+
+        var jqxhr = $.get( "/basic/publish", { data: data })
+            .done(function() {
+                console.log("post successful");
+            })
+            .fail(function() {
+              alert( "post request failed" );
+            });
+    }
+
     // for browsers that don't have console
     if(typeof window.console == 'undefined') { window.console = {log: function (msg) {} }; }
 
-    // Start checking for any events that occurred after page load time (right now)
-    // Notice how we use .getTime() to have num milliseconds since epoch in UTC
-    // This is the time format the longpoll server uses.
-    var sinceTime = (new Date(Date.now())).getTime();
+    var sinceTime = 1;
 
     // Let's subscribe to animal related events.
-    var category = "farm";
+    var category = "echo";
 
     (function poll() {
         var timeout = 45;  // in seconds

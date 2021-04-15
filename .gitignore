@@ -26,3 +26,14 @@ _testmain.go
 coverage.out
 coverage.txt
 
+
+# example program binaries
+# TODO: add .exe flavors here too
+basic
+advanced
+events.data
+chatbot
+examples/chatbot_example
+examples/filepersist_example
+examples/filepersist_example.data
+
