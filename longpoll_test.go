@@ -13,29 +13,6 @@ import (
 	"github.com/gofrs/uuid"
 )
 
-type CloseNotifierRecorder struct {
-	httptest.ResponseRecorder
-	CloseNotifier chan bool
-}
-
-// As it turns out, httptest.ResponseRecorder (returned by httptest.NewRecorder)
-// does not support CloseNotify, so mock it to avoid panics about not supporting
-// the interface
-func (cnr *CloseNotifierRecorder) CloseNotify() <-chan bool {
-	return cnr.CloseNotifier
-}
-
-func NewCloseNotifierRecorder() *CloseNotifierRecorder {
-	return &CloseNotifierRecorder{
-		httptest.ResponseRecorder{
-			HeaderMap: make(http.Header),
-			Body:      new(bytes.Buffer),
-			Code:      200,
-		},
-		make(chan bool, 1),
-	}
-}
-
 //gocyclo:ignore
 func Test_LongpollManager_Publish(t *testing.T) {
 	manager, err := StartLongpoll(Options{
@@ -340,7 +317,7 @@ func Test_LongpollManager_WebClient_InvalidRequests(t *testing.T) {
 
 	// Empty request, this is going to result in an JSON error object:
 	req, _ := http.NewRequest("GET", "", nil)
-	w := NewCloseNotifierRecorder()
+	w := httptest.NewRecorder()
 	subscriptionHandler.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Errorf("SubscriptionHandler didn't return %v", http.StatusOK)
@@ -353,7 +330,7 @@ func Test_LongpollManager_WebClient_InvalidRequests(t *testing.T) {
 
 	// Invalid timeout, not a number
 	req, _ = http.NewRequest("GET", "?timeout=adf&category=veggies", nil)
-	w = NewCloseNotifierRecorder()
+	w = httptest.NewRecorder()
 	subscriptionHandler.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Errorf("SubscriptionHandler didn't return %v", http.StatusOK)
@@ -364,7 +341,7 @@ func Test_LongpollManager_WebClient_InvalidRequests(t *testing.T) {
 
 	// Invalid timeout, too small
 	req, _ = http.NewRequest("GET", "?timeout=0&category=veggies", nil)
-	w = NewCloseNotifierRecorder()
+	w = httptest.NewRecorder()
 	subscriptionHandler.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Errorf("SubscriptionHandler didn't return %v", http.StatusOK)
@@ -375,7 +352,7 @@ func Test_LongpollManager_WebClient_InvalidRequests(t *testing.T) {
 
 	// Invalid timeout, too big
 	req, _ = http.NewRequest("GET", "?timeout=111&category=veggies", nil)
-	w = NewCloseNotifierRecorder()
+	w = httptest.NewRecorder()
 	subscriptionHandler.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Errorf("SubscriptionHandler didn't return %v", http.StatusOK)
@@ -386,7 +363,7 @@ func Test_LongpollManager_WebClient_InvalidRequests(t *testing.T) {
 
 	// Valid timeout, but missing category:
 	req, _ = http.NewRequest("GET", "?timeout=30", nil)
-	w = NewCloseNotifierRecorder()
+	w = httptest.NewRecorder()
 	subscriptionHandler.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Errorf("SubscriptionHandler didn't return %v", http.StatusOK)
@@ -397,7 +374,7 @@ func Test_LongpollManager_WebClient_InvalidRequests(t *testing.T) {
 
 	// Valid timeout, but category is too small
 	req, _ = http.NewRequest("GET", "?timeout=30&category=", nil)
-	w = NewCloseNotifierRecorder()
+	w = httptest.NewRecorder()
 	subscriptionHandler.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Errorf("SubscriptionHandler didn't return %v", http.StatusOK)
@@ -412,7 +389,7 @@ func Test_LongpollManager_WebClient_InvalidRequests(t *testing.T) {
 		tooLong += "a"
 	} // 1025 chars long
 	req, _ = http.NewRequest("GET", "?timeout=30&category="+tooLong, nil)
-	w = NewCloseNotifierRecorder()
+	w = httptest.NewRecorder()
 	subscriptionHandler.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Errorf("SubscriptionHandler didn't return %v", http.StatusOK)
@@ -423,7 +400,7 @@ func Test_LongpollManager_WebClient_InvalidRequests(t *testing.T) {
 
 	// Valid timeout, valid category, but invalid since_time
 	req, _ = http.NewRequest("GET", "?timeout=30&category=foobar&since_time=asdf", nil)
-	w = NewCloseNotifierRecorder()
+	w = httptest.NewRecorder()
 	subscriptionHandler.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Errorf("SubscriptionHandler didn't return %v", http.StatusOK)
@@ -1561,7 +1538,7 @@ func Test_MultipleConsecutivePublishedEvents(t *testing.T) {
 	// so this will wait for a publish or timeout (in this case we'll get
 	// something)
 	req, _ := http.NewRequest("GET", "?timeout=30&category=beer", nil)
-	w := NewCloseNotifierRecorder()
+	w := httptest.NewRecorder()
 
 	// Publish 3 events for our subscribed category all at once.
 	// Note how these events occur after the client subscribed.
@@ -1608,7 +1585,7 @@ func Test_MultipleConsecutivePublishedEvents(t *testing.T) {
 
 	// Now ask for any events using since_time and last_id and confirm we get the other 2/3 events publisehd at the saem time
 	req, _ = http.NewRequest("GET", fmt.Sprintf("?timeout=2&category=beer&since_time=%d&last_id=%v", firstEvent.Timestamp, firstEvent.ID), nil)
-	w = NewCloseNotifierRecorder()
+	w = httptest.NewRecorder()
 	subscriptionHandler.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Errorf("SubscriptionHandler didn't return %v", http.StatusOK)
@@ -1648,7 +1625,7 @@ func Test_MultipleConsecutivePublishedEvents(t *testing.T) {
 	time.Sleep(1500 * time.Millisecond)
 
 	req, _ = http.NewRequest("GET", fmt.Sprintf("?timeout=2&category=beer&since_time=%d&last_id=%v", thirdEvent.Timestamp, thirdEvent.ID), nil)
-	w = NewCloseNotifierRecorder()
+	w = httptest.NewRecorder()
 	subscriptionHandler.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Errorf("SubscriptionHandler didn't return %v", http.StatusOK)
@@ -1723,7 +1700,7 @@ func Test_WithFilePersistorAddOn(t *testing.T) {
 	subscriptionHandler := ajaxHandler(manager.SubscriptionHandler)
 	req, _ := http.NewRequest("GET", fmt.Sprintf("?timeout=6&category=food&since_time=%d", sinceTime), nil)
 
-	w := NewCloseNotifierRecorder()
+	w := httptest.NewRecorder()
 	subscriptionHandler.ServeHTTP(w, req)
 
 	// Confirm we got the correct event
