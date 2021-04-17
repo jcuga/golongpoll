@@ -6,14 +6,15 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/jcuga/golongpoll"
-	"github.com/jcuga/golongpoll/client"
 	"log"
 	"math/rand"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/jcuga/golongpoll"
+	"github.com/jcuga/golongpoll/client"
 )
 
 func main() {
@@ -37,7 +38,7 @@ func main() {
 		http.ServeFile(w, r, *staticClientJs)
 	})
 	http.HandleFunc("/chatbot/events", manager.SubscriptionHandler)
-	http.HandleFunc("/chatbot/send", getSendHandler(manager))
+	http.HandleFunc("/chatbot/send", manager.PublishHandler)
 	fmt.Println("Serving webpage at http://127.0.0.1:8101/chatbot")
 	go beChatbot(manager)
 	http.ListenAndServe("127.0.0.1:8101", nil)
@@ -105,19 +106,6 @@ func beChatbot(lpManager *golongpoll.LongpollManager) {
 	fmt.Println("Chatbot golongpoll.Client out of events, stopping.")
 }
 
-func getSendHandler(manager *golongpoll.LongpollManager) func(w http.ResponseWriter, r *http.Request) {
-	// Creates closure that captures the LongpollManager
-	return func(w http.ResponseWriter, r *http.Request) {
-		data := r.URL.Query().Get("data")
-		if len(data) == 0 {
-			w.WriteHeader(http.StatusBadRequest)
-			w.Write([]byte("Missing required URL param 'data'."))
-			return
-		}
-		manager.Publish("to-chatbot", data)
-	}
-}
-
 func chatBotExampleHomepage(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, `
 <html>
@@ -162,17 +150,15 @@ func chatBotExampleHomepage(w http.ResponseWriter, r *http.Request) {
     <!-- Serving the gonlongpoll js client at this address: -->
     <script src="/js/client.js"></script>
 
-    <!-- NOTE: jquery is NOT requried to use golongpoll or the golongpoll javascript client.
-	Including here for shorter/lazier example. -->
-    <script src="http://code.jquery.com/jquery-1.11.3.min.js"></script>
 	<script>
 		var client = golongpoll.newClient({
-			url: "/chatbot/events",
+			subscribeUrl: "/chatbot/events",
+			publishUrl: "/chatbot/send",
 			category: "from-chatbot",
 			// NOTE: without setting sinceTime here, defaults to only new events (sinceTime of now)
 			loggingEnabled: true,
 			onEvent: function (event) {
-				$("#conversation").append("<p class=\"msg-bot\">" + event.data + "</p>");
+				document.getElementById("conversation").insertAdjacentHTML('beforeend',"<p class=\"msg-bot\">" + event.data + "</p>");
 			},
 		});
 
@@ -183,25 +169,21 @@ func chatBotExampleHomepage(w http.ResponseWriter, r *http.Request) {
 			console.log(client);
 		}
 
-		function send() {
-			var data = $("#send-input").val();
+		document.getElementById("send-btn").onclick = function(event) {
+			var data = document.getElementById("send-input").value;
 			if (data.length == 0) {
 				alert("input cannot be empty");
 				return;
 			}
-
-			var jqxhr = $.get( "/chatbot/send", { data: data })
-				.done(function() {
-					$("#conversation").append("<p class=\"msg-me\">" + data + "</p>");
-					$("#send-input").val('');
-
-				})
-				.fail(function() {
-				alert( "post request failed" );
+			client.publish("to-chatbot", data,
+				function () {
+					document.getElementById("conversation").insertAdjacentHTML('beforeend',"<p class=\"msg-me\">" + data + "</p>");
+					document.getElementById("send-input").value = '';
+				},
+				function(resp) {
+					alert("post request failed: " + resp);
 				});
-		}
-
-		$("#send-btn").click(send);
+			};
 	</script>
 </body>
 </html>`)

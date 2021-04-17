@@ -1,13 +1,14 @@
 // This example uses the FilePersistorAddOn to persist event data to file,
-// allowing us to retain events across multiple program runs.start, 3) notice past events still there
+// allowing us to retain events across multiple program runs.
 package main
 
 import (
 	"flag"
 	"fmt"
-	"github.com/jcuga/golongpoll"
 	"log"
 	"net/http"
+
+	"github.com/jcuga/golongpoll"
 )
 
 func main() {
@@ -41,7 +42,7 @@ func main() {
 		http.ServeFile(w, r, *staticClientJs)
 	})
 	http.HandleFunc("/filepersist/events", manager.SubscriptionHandler)
-	http.HandleFunc("/filepersist/publish", getPublishHandler(manager))
+	http.HandleFunc("/filepersist/publish", manager.PublishHandler)
 	fmt.Println("Serving webpage at http://127.0.0.1:8102/filepersist")
 	http.ListenAndServe("127.0.0.1:8102", nil)
 }
@@ -86,14 +87,11 @@ func filePersistorExampleHomepage(w http.ResponseWriter, r *http.Request) {
     <ul id="events"></ul>
     <!-- Serving the gonlongpoll js client at this address: -->
     <script src="/js/client.js"></script>
-
-    <!-- NOTE: jquery is NOT requried to use golongpoll or the golongpoll javascript client.
-	Including here for shorter/lazier example. -->
-    <script src="http://code.jquery.com/jquery-1.11.3.min.js"></script>
 <script>
 
 	var client = golongpoll.newClient({
-		url: "/filepersist/events",
+		subscribeUrl: "/filepersist/events",
+		publishUrl: "/filepersist/publish",
 		category: "fileaddon-example",
 		// get events since last hour
 		sinceTime: Date.now() - (60 * 60 * 1000),
@@ -102,7 +100,7 @@ func filePersistorExampleHomepage(w http.ResponseWriter, r *http.Request) {
 		// if you wrapped the LongpollManager.SubscriptionHandler with some authentication layer.
 		extraRequestHeaders: [ {key: "Extra-Header-1", value: "One"}, { key: "Extra-Header-2", value: "Two"}],
 		onEvent: function (event) {
-			$("#events").append("<li>" + (new Date(event.timestamp).toLocaleTimeString()) + ": " + event.data + "</li>");
+			document.getElementById("events").insertAdjacentHTML('beforeend', "<li>" + (new Date(event.timestamp).toLocaleTimeString()) + ": " + event.data + "</li>");
 		},
 	});
 
@@ -113,23 +111,21 @@ func filePersistorExampleHomepage(w http.ResponseWriter, r *http.Request) {
 		console.log(client);
 	}
 
-    function publish() {
-        var data = $("#publish-input").val();
-        if (data.length == 0) {
-            alert("input cannot be empty");
-            return;
-        }
-
-        var jqxhr = $.get( "/filepersist/publish", { data: data })
-            .done(function() {
-                $("#publish-input").val('');
-            })
-            .fail(function() {
-              alert( "publish post request failed" );
-            });
-    }
-
-    $("#publish-btn").click(publish);
+	document.getElementById("publish-btn").onclick = function(event) {
+		var data = document.getElementById("publish-input").value;
+		if (data.length == 0) {
+			alert("input cannot be empty");
+			return;
+		}
+		client.publish("fileaddon-example", data,
+			function () {
+				document.getElementById("publish-input").value = '';
+			},
+			function(resp) {
+				alert("publish post request failed: " + resp);
+			}
+			);
+	};
 
 </script>
 </body>

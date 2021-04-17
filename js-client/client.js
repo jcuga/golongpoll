@@ -1,6 +1,7 @@
 var golongpoll = {
     newClient: function ({
-            url,
+            subscribeUrl,
+            publishUrl,
             category,
             sinceTime=new Date().getTime(),
             lastId,
@@ -14,43 +15,46 @@ var golongpoll = {
             loggingEnabled=false,
             extraRequestHeaders=[]
         }) {
-            if (!url) {
-                client.log("newClient() requires non-empty 'url' option.");
+            if (!subscribeUrl) {
+                console.log("newClient() requires non-empty 'subscribeUrl' option.");
                 return null;
             }
 
+            // NOTE: unlike subscribeUrl, publishUrl is optional.
+
             if (!category || category.length < 1 || category.length > 1024) {
-                client.log("newClient() requires 'category' option between 1-1024 characters long.");
+                console.log("newClient() requires 'category' option between 1-1024 characters long.");
                 return null;
             }
 
             if (sinceTime <= 0) {
-                client.log("newClient() requires 'sinceTime' option > 0.");
+                console.log("newClient() requires 'sinceTime' option > 0.");
                 return null;
             }
 
             if (pollTimeoutSeconds < 1) {
-                client.log("newClient() requires 'pollTimeoutSeconds' option >= 1.");
+                console.log("newClient() requires 'pollTimeoutSeconds' option >= 1.");
                 return null;
             }
 
             if (reattemptWaitSeconds < 1) {
-                client.log("newClient() requires 'reattemptWaitSeconds' option >= 1.");
+                console.log("newClient() requires 'reattemptWaitSeconds' option >= 1.");
                 return null;
             }
 
             if ((basicAuthUsername.length > 0 && basicAuthPassword.length == 0) || (basicAuthUsername.length == 0 && basicAuthPassword.length > 0)) {
-                client.log("newClient() requires 'basicAuthUsername' and 'basicAuthPassword' to be both empty or nonempty, not mixed.");
+                console.log("newClient() requires 'basicAuthUsername' and 'basicAuthPassword' to be both empty or nonempty, not mixed.");
                 return null;
             }
 
             var client = {
                 running: true,
                 stop: function () {
-                    client.log("golongpoll client signaling stop.");
+                    this.log("golongpoll client signaling stop.");
                     this.running = false;
                 },
-                url: url,
+                subscribeUrl: subscribeUrl,
+                publishUrl: publishUrl,
                 category: category,
                 sinceTime: sinceTime,
                 lastId: lastId,
@@ -69,6 +73,50 @@ var golongpoll = {
                         if (typeof window.console == 'undefined') { return; };
                         console.log("golongpoll client[\"" + this.category + "\"]: " + msg);
                     }
+                },
+                publish: function (category, data, onSuccess, onFail) {
+                    if (!this.publishUrl) {
+                        this.log("Missing publishUrl, cannot publish.")
+                        return;
+                    }
+
+                    if (!category || category.length == 0 || category.length > 1024) {
+                        this.log("Invalid publish category, must be between 1-1024 characters long.")
+                        return;
+                    }
+
+                    if (data === undefined || data === null) {
+                        this.log("Invalid publish data, must be not undefined/null.");
+                        return;
+                    }
+
+                    var xmlHttp = new XMLHttpRequest();
+                    var clientThis = this;
+                    // NOTE: includes optional user/password for basic auth
+                    xmlHttp.open("POST", client.publishUrl, true, client.basicAuthUsername, client.basicAuthPassword); // true for asynchronous
+                    xmlHttp.onload = function () {
+                        var respJson = JSON.parse(xmlHttp.response);
+                        if (respJson && respJson.success === true) {
+                            clientThis.log("Publish success on category: " + category);
+                            if (onSuccess) {
+                                onSuccess();
+                            }
+                        } else {
+                            clientThis.log("Publish failed, response: " + xmlHttp.response);
+                            if (onFail) {
+                                onFail(xmlHttp.response);
+                            }
+                        }
+                    };
+                    xmlHttp.onerror = function () {
+                        clientThis.log("Publish failed at the network level.")
+                    };
+                    xmlHttp.setRequestHeader('Content-type', 'application/json')
+                    // Add any optional request headers
+                    for (var i = 0; i < client.extraRequestHeaders.length; i++) {
+                        xmlHttp.setRequestHeader(client.extraRequestHeaders[i].key, client.extraRequestHeaders[i].value);
+                    }
+                    xmlHttp.send(JSON.stringify({category: category, data: data}))
                 }
             };
 
@@ -84,7 +132,7 @@ var golongpoll = {
                     .map(function(k) {return esc(k) + '=' + esc(params[k]);})
                     .join('&');
 
-                var pollUrl = client.url + "?" + query
+                var pollUrl = client.subscribeUrl + "?" + query
 
                 var xmlHttp = new XMLHttpRequest();
 

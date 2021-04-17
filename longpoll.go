@@ -6,12 +6,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/gofrs/uuid"
 	"io"
 	"log"
 	"net/http"
 	"strconv"
 	"time"
+
+	"github.com/gofrs/uuid"
 )
 
 const (
@@ -28,6 +29,10 @@ const (
 // published via LongpollManager.Publish(). The manager can be stopped via
 // Shutdown() or ShutdownWithTimeout(seconds int).
 //
+// Events can also be published by http clients via LongpollManager.PublishHandler
+// if desired. Simply serve this handler directly, or wrapped in an Http handler
+// that adds desired authentication/access controls.
+//
 // If for some reason you want multiple goroutines handling different pub-sub
 // channels, you can simply create multiple LongpollManagers and serve their
 // subscription handlers on separate URLs.
@@ -35,10 +40,20 @@ type LongpollManager struct {
 	subManager *subscriptionManager
 	eventsIn   chan<- *Event
 	stopSignal chan<- bool
-	// SubscriptionHandler is a Http handler function that can be served
+	// SubscriptionHandler is an Http handler function that can be served
 	// directly or wrapped within another handler function that adds additional
 	// behavior like authentication or business logic.
 	SubscriptionHandler func(w http.ResponseWriter, r *http.Request)
+	// PublishHandler is an Http handler function that can be served directly
+	// or wrapped within another handler function that adds additional
+	// behavior like authentication or business logic. If one does not want
+	// to expose the PublishHandler, and instead only publish via
+	// LongpollManager.Publish(), then simply don't serve this handler.
+	// NOTE: this default publish handler does not enforce anything like what
+	// category or data is allowed. It is entirely permissive by default.
+	// For more production-type uses, wrap this with a http handler that
+	// limits what can be published.
+	PublishHandler func(w http.ResponseWriter, r *http.Request)
 	// flag whether or not StartLongpoll has been called
 	started bool
 	// flag whether or not LongpollManager.Shutdown has been called--enforces
@@ -265,7 +280,7 @@ func StartLongpoll(opts Options) (*LongpollManager, error) {
 
 	// Start subscription manager
 	go subManager.run()
-	LongpollManager := LongpollManager{
+	lpManager := LongpollManager{
 		subManager: &subManager,
 		eventsIn:   events,
 		stopSignal: quit,
@@ -273,7 +288,8 @@ func StartLongpoll(opts Options) (*LongpollManager, error) {
 			clientRequestChan, clientTimeoutChan, opts.LoggingEnabled),
 		started: true,
 	}
-	return &LongpollManager, nil
+	lpManager.PublishHandler = getLongPollPublishHandler(&lpManager)
+	return &lpManager, nil
 }
 
 type clientSubscription struct {
@@ -300,6 +316,50 @@ func newclientSubscription(subscriptionCategory string, lastEventTime time.Time,
 		make(chan []*Event, 1),
 	}
 	return &subscription, nil
+}
+
+type publishData struct {
+	Category string      `json:"category"`
+	Data     interface{} `json:"data"`
+}
+
+func getLongPollPublishHandler(manager *LongpollManager) func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			fmt.Fprintf(w, "{\"error\": \"Invalid HTTP Method. Only POST allowed.\"}")
+			log.Printf("WARN - golongpoll.publishHandler - Invalid HTTP method: %v, only POST allowed.\n", r.Method)
+			return
+		}
+
+		decoder := json.NewDecoder(r.Body)
+		var pubData publishData
+		err := decoder.Decode(&pubData)
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprintf(w, "{\"error\": \"Invalid POST body json.\"}")
+			log.Printf("WARN - golongpoll.publishHandler - Invalid post body json, error: %v\n", err)
+			return
+		}
+
+		if len(pubData.Category) == 0 || len(pubData.Category) > 1024 {
+			w.WriteHeader(http.StatusBadRequest)
+			io.WriteString(w, "{\"error\": \"Invalid or missing 'category' arg, must be 1-1024 characters long.\"}")
+			log.Println("WARN - golongpoll.publishHandler - Invalid or missing subscription 'category', must be 1-1024 characters long.")
+			return
+		}
+
+		if pubData.Data == nil {
+			w.WriteHeader(http.StatusBadRequest)
+			log.Println("WARN - golongpoll.publishHandler - Invalid or missing publish data. Must be non-nil.")
+			io.WriteString(w, "{\"error\": \"Invalid or missing 'data' arg, must be non-nil.\"}")
+			return
+		}
+
+		manager.Publish(pubData.Category, pubData.Data)
+		w.WriteHeader(http.StatusOK)
+		io.WriteString(w, "{\"success\": true}")
+	}
 }
 
 // get web handler that has closure around sub chanel and clientTimeout channnel
