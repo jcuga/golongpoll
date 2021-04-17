@@ -91,8 +91,8 @@ func filePersistorExampleHomepage(w http.ResponseWriter, r *http.Request) {
 
 	var client = golongpoll.newClient({
 		subscribeUrl: "/filepersist/events",
-		publishUrl: "/filepersist/publish",
 		category: "fileaddon-example",
+		publishUrl: "/filepersist/publish",
 		// get events since last hour
 		sinceTime: Date.now() - (60 * 60 * 1000),
 		loggingEnabled: true,

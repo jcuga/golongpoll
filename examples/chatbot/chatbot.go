@@ -51,7 +51,7 @@ func beChatbot(lpManager *golongpoll.LongpollManager) {
 	}
 
 	c, err := client.NewClient(client.ClientOptions{
-		Url:            *u,
+		SubscribeUrl:   *u,
 		Category:       "to-chatbot",
 		LoggingEnabled: true,
 	})
@@ -153,8 +153,8 @@ func chatBotExampleHomepage(w http.ResponseWriter, r *http.Request) {
 	<script>
 		var client = golongpoll.newClient({
 			subscribeUrl: "/chatbot/events",
-			publishUrl: "/chatbot/send",
 			category: "from-chatbot",
+			publishUrl: "/chatbot/send",
 			// NOTE: without setting sinceTime here, defaults to only new events (sinceTime of now)
 			loggingEnabled: true,
 			onEvent: function (event) {

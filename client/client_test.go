@@ -82,7 +82,7 @@ func TestClient_Events(t *testing.T) {
 
 	// Have a small timeout for tests
 	opts := ClientOptions{
-		Url:                  u,
+		SubscribeUrl:         u,
 		Category:             category,
 		PollTimeoutSeconds:   1,
 		ReattemptWaitSeconds: 1,
@@ -161,7 +161,7 @@ func TestClient_PastEvents(t *testing.T) {
 
 	// Have a small timeout for tests
 	opts := ClientOptions{
-		Url:                  u,
+		SubscribeUrl:         u,
 		Category:             category,
 		PollTimeoutSeconds:   1,
 		ReattemptWaitSeconds: 1,
@@ -217,7 +217,7 @@ func TestClient_HttpBasicAuthentication(t *testing.T) {
 	u, manager := testAuthServer(testUser, testPassword)
 
 	opts := ClientOptions{
-		Url:                  u,
+		SubscribeUrl:         u,
 		Category:             category,
 		PollTimeoutSeconds:   1,
 		ReattemptWaitSeconds: 1,
@@ -255,7 +255,7 @@ func TestClient_HttpBasicAuthentication(t *testing.T) {
 
 	// We have to make a new client, we can't change and re-start the old one.
 	opts = ClientOptions{
-		Url:                  u,
+		SubscribeUrl:         u,
 		Category:             category,
 		PollTimeoutSeconds:   1,
 		ReattemptWaitSeconds: 1,
@@ -300,7 +300,7 @@ func TestClient_OnfailureInvalidParams(t *testing.T) {
 	u, _ := testServer()
 
 	opts := ClientOptions{
-		Url:                  u,
+		SubscribeUrl:         u,
 		Category:             category,
 		PollTimeoutSeconds:   1,
 		ReattemptWaitSeconds: 1,
@@ -329,7 +329,7 @@ func TestClient_OnfailureServerDown(t *testing.T) {
 	}
 
 	opts := ClientOptions{
-		Url:                  *u,
+		SubscribeUrl:         *u,
 		Category:             category,
 		PollTimeoutSeconds:   1,
 		ReattemptWaitSeconds: 1,
@@ -357,7 +357,7 @@ func TestClient_OnfailureServer404(t *testing.T) {
 	}
 
 	opts := ClientOptions{
-		Url:                  *extraPartUrl,
+		SubscribeUrl:         *extraPartUrl,
 		Category:             category,
 		PollTimeoutSeconds:   1,
 		ReattemptWaitSeconds: 1,
@@ -418,7 +418,7 @@ func TestClient_ExtraHeaders(t *testing.T) {
 	defer manager.Shutdown()
 
 	opts := ClientOptions{
-		Url:                  u,
+		SubscribeUrl:         u,
 		Category:             category,
 		PollTimeoutSeconds:   1,
 		ReattemptWaitSeconds: 1,

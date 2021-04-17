@@ -3,26 +3,32 @@
 package client
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/jcuga/golongpoll"
 	"log"
 	"net/http"
 	"net/url"
 	"sync/atomic"
 	"time"
+
+	"github.com/jcuga/golongpoll"
 )
 
 // ClientOptions for configuring client behavior.
 type ClientOptions struct {
-	// Url is the longpoll server's subscription handler's URL to hit when
+	// SubscribeUrl is the longpoll server's subscription handler's URL to hit when
 	// polling for events. This is a URL pointing to where
 	// LongpollManager.SubscriptionHandler is being served or wrapped by another
 	// handler.
-	Url url.URL
+	SubscribeUrl url.URL
 	// Category is the subscription category to poll.
 	Category string
+	// PublishUrl is the optional longpoll server's publish handler's URL to
+	// publish event data to. Can be omitted if publishing not used or if
+	// the LongpollManager.PublishHandler is not served/exposed.
+	PublishUrl url.URL
 	// PollTimeoutSeconds is the timeout arg the client sends to the longpoll
 	// server, which dictates how long the server should keep the request idle
 	// before issuing a timeout response when there hasn't been any event data
@@ -136,7 +142,7 @@ func (c *Client) Start(pollSince time.Time) <-chan *golongpoll.Event {
 	}
 
 	c.started = true
-	u := c.options.Url
+	u := c.options.SubscribeUrl
 
 	atomic.AddUint64(&(c.runID), 1)
 	currentRunID := atomic.LoadUint64(&(c.runID))
@@ -262,7 +268,7 @@ func (c *Client) Stop() {
 
 	if c.options.LoggingEnabled {
 		log.Printf("INFO - golongpoll.Client.Stop - Sending stop signal. url: %s, category: \"%v\", timeout: %v,\n",
-			c.options.Url.String(), c.options.Category, c.options.PollTimeoutSeconds)
+			c.options.SubscribeUrl.String(), c.options.Category, c.options.PollTimeoutSeconds)
 	}
 
 	// Changing the runID will have any previous goroutine ignore any events it may receive
@@ -275,7 +281,7 @@ func (c *Client) doQuit(runID uint64) bool {
 	if newRunID != runID {
 		if c.options.LoggingEnabled {
 			log.Printf("INFO - golongpoll.Client.run - received stop signal, stopping. url: %s, category: \"%v\", timeout: %v,\n",
-				c.options.Url.String(), c.options.Category, c.options.PollTimeoutSeconds)
+				c.options.SubscribeUrl.String(), c.options.Category, c.options.PollTimeoutSeconds)
 		}
 		close(c.events)
 		return true
@@ -284,8 +290,8 @@ func (c *Client) doQuit(runID uint64) bool {
 }
 
 func (c *Client) getCommonLogFields(since int64, lastID string) string {
-	return fmt.Sprintf("url: %s, category: \"%v\", timeout: %v, since_time: %v, last_id: %v",
-		c.options.Url.String(), c.options.Category, c.options.PollTimeoutSeconds, since, lastID)
+	return fmt.Sprintf("subscribe_url: %s, category: \"%v\", timeout: %v, since_time: %v, last_id: %v",
+		c.options.SubscribeUrl.String(), c.options.Category, c.options.PollTimeoutSeconds, since, lastID)
 }
 
 // Relevant parts of HTTP longpolling API's resposne data
@@ -299,7 +305,7 @@ type pollResponse struct {
 
 // Call the longpoll server to get the events since a specific timestamp
 func (c Client) fetchEvents(since int64, lastID string) (*pollResponse, error) {
-	u := c.options.Url
+	u := c.options.SubscribeUrl
 	if c.options.LoggingEnabled {
 		log.Printf("INFO - golongpoll.Client.fetchEvents - Polling Events. %s\n", c.getCommonLogFields(since, lastID))
 	}
@@ -350,4 +356,105 @@ func (c Client) fetchEvents(since int64, lastID string) (*pollResponse, error) {
 	}
 
 	return &pollResp, nil
+}
+
+type publishRequest struct {
+	Category string      `json:"category"`
+	Data     interface{} `json:"data"`
+}
+
+type publishResponse struct {
+	Success bool   `json:"success"`
+	Error   string `json:"error"`
+}
+
+// Publish will publish data on the given category to ClientOptions.PublishUrl.
+// Returns nil on success, non-nil error on failure.
+// ClientOptions.PublishUrl must be non-empty.
+func (c Client) Publish(category string, data interface{}) error {
+	if len(c.options.PublishUrl.String()) == 0 {
+		log.Printf("ERROR - golongpoll.Client.Publish - Cannot call Publish when client options.PublishUrl is empty.")
+		return errors.New("Cannot call Publish() when client options.PublishUrl is empty.")
+	}
+
+	if len(category) == 0 || len(category) > 1024 {
+		if c.options.LoggingEnabled {
+			log.Printf("WARN - golongpoll.Client.Publish - Invalid or missing 'category' arg, must be 1-1024 characters long, got: %v", len(category))
+		}
+		return errors.New("category must be 1-1024 characters long.")
+	}
+
+	if data == nil {
+		if c.options.LoggingEnabled {
+			log.Printf("WARN - golongpoll.Client.Publish - Invalid or missing 'data' arg, must be non-nil.")
+		}
+		return errors.New("data must be non-nil.")
+	}
+
+	publishData := publishRequest{Category: category, Data: data}
+	jsonData, err := json.Marshal(publishData)
+	if err != nil {
+		if c.options.LoggingEnabled {
+			log.Printf("WARN - golongpoll.Client.Publish - Failed to marshal publish request data json, error: %v", err)
+		}
+		return fmt.Errorf("Failed to marshal publish request data json, error: %v", err)
+	}
+
+	req, err := http.NewRequest("POST", c.options.PublishUrl.String(), bytes.NewBuffer(jsonData))
+	if err != nil {
+		if c.options.LoggingEnabled {
+			log.Printf("WARN - golongpoll.Client.Publish - HTTP request error: %v", err)
+		}
+		return errors.New(fmt.Sprintf("HTTP request error: %v", err))
+	}
+	if len(c.options.BasicAuthUsername) > 0 && len(c.options.BasicAuthPassword) > 0 {
+		req.SetBasicAuth(c.options.BasicAuthUsername, c.options.BasicAuthPassword)
+	}
+
+	// Optional headers to include in request--can be used for extra authentication
+	// if the LongpollManager.PublishHandler is wrapped with additional checks.
+	for _, kvpair := range c.options.ExtraHeaders {
+		req.Header.Add(kvpair.Key, kvpair.Value)
+	}
+
+	resp, err := c.options.HttpClient.Do(req)
+	if err != nil {
+		if c.options.LoggingEnabled {
+			log.Printf("WARN - golongpoll.Client.Publish - Error connecting to %v, error: %s", c.options.PublishUrl, err)
+		}
+		return errors.New(fmt.Sprintf("Error connecting to %v, error: %s", c.options.PublishUrl, err))
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		if c.options.LoggingEnabled {
+			log.Printf("WARN - golongpoll.Client.Publish - HTTP response code: %d", resp.StatusCode)
+		}
+		return errors.New(fmt.Sprintf("HTTP response code: %d", resp.StatusCode))
+	}
+
+	decoder := json.NewDecoder(resp.Body)
+
+	var publishResp publishResponse
+	err = decoder.Decode(&publishResp)
+	if err != nil {
+		if c.options.LoggingEnabled {
+			log.Printf("WARN - golongpoll.Client.Publish - Failed to decode publish response, error: %v", err)
+		}
+		return errors.New(fmt.Sprintf("Error decoding publish response: %v", err))
+	}
+
+	if publishResp.Success {
+		return nil
+	} else if len(publishResp.Error) > 0 {
+		if c.options.LoggingEnabled {
+			log.Printf("WARN - golongpoll.Client.Publish - Publish response had error: %v", publishResp.Error)
+		}
+		return errors.New(fmt.Sprintf("Publish response had error: %v", publishResp.Error))
+	} else {
+		if c.options.LoggingEnabled {
+			log.Printf("WARN - golongpoll.Client.Publish - unexpected response json: %v", publishResp)
+		}
+		return errors.New(fmt.Sprintf("Unexpected response json: %v", publishResp))
+	}
 }

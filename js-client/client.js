@@ -1,7 +1,7 @@
 var golongpoll = {
     newClient: function ({
             subscribeUrl,
-            publishUrl,
+            publishUrl, // Optional, can omit if publish handler not exposed
             category,
             sinceTime=new Date().getTime(),
             lastId,
@@ -54,8 +54,8 @@ var golongpoll = {
                     this.running = false;
                 },
                 subscribeUrl: subscribeUrl,
-                publishUrl: publishUrl,
                 category: category,
+                publishUrl: publishUrl,
                 sinceTime: sinceTime,
                 lastId: lastId,
                 onEvent: onEvent,
