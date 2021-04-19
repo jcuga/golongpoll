@@ -114,6 +114,10 @@ func NewClient(opts ClientOptions) (*Client, error) {
 		opts.HttpClient = &http.Client{}
 	}
 
+	if len(opts.SubscribeUrl.String()) == 0 && len(opts.PublishUrl.String()) == 0 {
+		return nil, errors.New("At least one of opts.SubscribeUrl and opts.PublishUrl must be non-empty.")
+	}
+
 	client := &Client{
 		options: opts,
 		events:  make(chan *golongpoll.Event, 100),
@@ -139,6 +143,13 @@ func (c *Client) Start(pollSince time.Time) <-chan *golongpoll.Event {
 
 	if c.started {
 		panic("golongpoll Client cannot be started more than once.")
+	}
+
+	if len(c.options.SubscribeUrl.String()) == 0 {
+		log.Printf("ERROR - golongpoll.Client.Publish - Cannot call Start when client options.SubscribeUrl is empty.")
+		val := make(chan *golongpoll.Event)
+		close(val)
+		return val
 	}
 
 	c.started = true

@@ -37,3 +37,5 @@ examples/chatbot_example
 examples/filepersist_example
 examples/filepersist_example.data
 
+examples/stressor_client
+examples/stressor_server

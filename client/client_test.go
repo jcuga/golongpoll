@@ -29,6 +29,7 @@ func testServer() (url.URL, *golongpoll.LongpollManager) {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/events", eventsManager.SubscriptionHandler)
+	mux.HandleFunc("/publish", eventsManager.PublishHandler)
 
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -417,8 +418,11 @@ func TestClient_ExtraHeaders(t *testing.T) {
 	u, manager := testHeadersServer(t)
 	defer manager.Shutdown()
 
+	pubUrl, _ := url.Parse(strings.Replace(u.String(), "events", "publish", 1))
+
 	opts := ClientOptions{
 		SubscribeUrl:         u,
+		PublishUrl:           *pubUrl,
 		Category:             category,
 		PollTimeoutSeconds:   1,
 		ReattemptWaitSeconds: 1,
@@ -433,7 +437,10 @@ func TestClient_ExtraHeaders(t *testing.T) {
 
 	expectedResults := []string{"test1", "test2", "test3"}
 	for _, result := range expectedResults {
-		manager.Publish(category, result)
+		pubErr := c.Publish(category, result)
+		if pubErr != nil {
+			t.Errorf("Got unexpected error during publish: %v", err)
+		}
 		time.Sleep(time.Duration(100) * time.Millisecond)
 	}
 
@@ -480,6 +487,21 @@ func testHeadersServer(t *testing.T) (url.URL, *golongpoll.LongpollManager) {
 		eventsManager.SubscriptionHandler(w, r)
 	})
 
+	mux.HandleFunc("/publish", func(w http.ResponseWriter, r *http.Request) {
+
+		val := r.Header.Get("howdy")
+		if val != "doody" {
+			t.Errorf("Unexpected/missing header value. Expected: 'dooty', got: %q", val)
+		}
+
+		val = r.Header.Get("hi")
+		if val != "MOM" {
+			t.Errorf("Unexpected/missing header value. Expected: 'MOM', got: %q", val)
+		}
+
+		eventsManager.PublishHandler(w, r)
+	})
+
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		panic(fmt.Sprintf("Failed to listen on address, error: %v", err))
@@ -496,4 +518,234 @@ func testHeadersServer(t *testing.T) (url.URL, *golongpoll.LongpollManager) {
 	u, _ := url.Parse("http://" + listener.Addr().String() + "/events")
 
 	return *u, eventsManager
+}
+
+func TestClient_NewClientInvalidOptions(t *testing.T) {
+	subUrl, _ := url.Parse("http://127.0.0.1:8080/events")
+	pubUrl, _ := url.Parse("http://127.0.0.1:8080/publish")
+
+	// First up, need at least one of: sub/pub purl
+	c, err := NewClient(ClientOptions{
+		Category:             "asdf",
+		PollTimeoutSeconds:   1,
+		ReattemptWaitSeconds: 1,
+		LoggingEnabled:       true,
+	})
+
+	if err == nil {
+		t.Errorf("Expected non-nil error for invalid NewClient options (missing sub/pub urls).")
+	}
+	if c != nil {
+		t.Errorf("Expected nil client on error.")
+	}
+
+	// Need to supply a non-empty category
+	c, err = NewClient(ClientOptions{
+		SubscribeUrl:         *subUrl,
+		PublishUrl:           *pubUrl,
+		Category:             "",
+		PollTimeoutSeconds:   1,
+		ReattemptWaitSeconds: 1,
+		LoggingEnabled:       true,
+	})
+
+	if err == nil {
+		t.Errorf("Expected non-nil error for invalid NewClient options (missing category).")
+	}
+	if c != nil {
+		t.Errorf("Expected nil client on error.")
+	}
+
+	// if supplying basic auth, must provide both user and password
+	c, err = NewClient(ClientOptions{
+		SubscribeUrl:         *subUrl,
+		PublishUrl:           *pubUrl,
+		Category:             "testing",
+		BasicAuthPassword:    "passwordButNoUsername",
+		PollTimeoutSeconds:   1,
+		ReattemptWaitSeconds: 1,
+		LoggingEnabled:       true,
+	})
+
+	if err == nil {
+		t.Errorf("Expected non-nil error for invalid NewClient options (have BasicAuthPassword but missing BasicAuthUsername).")
+	}
+	if c != nil {
+		t.Errorf("Expected nil client on error.")
+	}
+
+	c, err = NewClient(ClientOptions{
+		SubscribeUrl:         *subUrl,
+		PublishUrl:           *pubUrl,
+		Category:             "testing",
+		BasicAuthUsername:    "usernameButNoPassword",
+		PollTimeoutSeconds:   1,
+		ReattemptWaitSeconds: 1,
+		LoggingEnabled:       true,
+	})
+
+	if err == nil {
+		t.Errorf("Expected non-nil error for invalid NewClient options (have BasicAuthUsername but missing BasicAuthPassword).")
+	}
+	if c != nil {
+		t.Errorf("Expected nil client on error.")
+	}
+
+	// Calling start with a client that does not have opts.SubscribeUrl set will immediately return a closed channel and log error
+	c, err = NewClient(ClientOptions{
+		PublishUrl:           *pubUrl,
+		Category:             "testing",
+		PollTimeoutSeconds:   1,
+		ReattemptWaitSeconds: 1,
+		LoggingEnabled:       true,
+	})
+
+	// Client should be created and is valid, but only for using Publish only
+	if err != nil {
+		t.Fatalf("Error creating client: %v", err)
+	}
+
+	events := c.Start(time.Now())
+
+	select {
+	case _, ok := <-events:
+		if ok {
+			t.Errorf("Expected closed channel.")
+		}
+
+	case <-time.After(1 * time.Second):
+		t.Error("Should have seen channel close.")
+	}
+
+	// Calling publish without opts.PublishUrl will return an error
+	c, err = NewClient(ClientOptions{
+		SubscribeUrl:         *subUrl,
+		Category:             "testing",
+		PollTimeoutSeconds:   1,
+		ReattemptWaitSeconds: 1,
+		LoggingEnabled:       true,
+	})
+
+	if err != nil {
+		t.Fatalf("Error creating client: %v", err)
+	}
+
+	err = c.Publish("someCategory", "someData")
+
+	if err == nil {
+		t.Error("Expected non-nil error when calling Publish with opts.PublishUrl empty.")
+	}
+}
+
+func TestClient_PublishInvalidOptions(t *testing.T) {
+	pubUrl, _ := url.Parse("http://127.0.0.1:8080/notBeingServedHere")
+
+	c, err := NewClient(ClientOptions{
+		PublishUrl:           *pubUrl,
+		Category:             "testing",
+		PollTimeoutSeconds:   1,
+		ReattemptWaitSeconds: 1,
+		LoggingEnabled:       true,
+	})
+
+	if err != nil {
+		t.Fatalf("Error creating client: %v", err)
+	}
+
+	err = c.Publish("", "someData")
+
+	if err == nil || err.Error() != "category must be 1-1024 characters long." {
+		t.Errorf("Unexpected err, got: %v", err)
+	}
+
+	err = c.Publish("someCategory", nil)
+
+	if err == nil || err.Error() != "data must be non-nil." {
+		t.Errorf("Unexpected err, got: %v", err)
+	}
+}
+
+func TestClient_PublishNoServer(t *testing.T) {
+	pubUrl, _ := url.Parse("http://127.0.0.1:7391/notBeingServedHere")
+
+	c, err := NewClient(ClientOptions{
+		PublishUrl:           *pubUrl,
+		Category:             "testing",
+		PollTimeoutSeconds:   1,
+		ReattemptWaitSeconds: 1,
+		LoggingEnabled:       true,
+	})
+
+	if err != nil {
+		t.Fatalf("Error creating client: %v", err)
+	}
+
+	err = c.Publish("someCategory", "someData")
+	if err == nil {
+		t.Fatalf("Expected error when publishing to server that does not exist.")
+	}
+}
+
+func TestClient_Publish(t *testing.T) {
+	category := "testing"
+
+	u, _ := testServer()
+	pubUrl, _ := url.Parse(strings.Replace(u.String(), "events", "publish", 1))
+
+	// Have a small timeout for tests
+	opts := ClientOptions{
+		SubscribeUrl:         u,
+		PublishUrl:           *pubUrl,
+		Category:             category,
+		PollTimeoutSeconds:   1,
+		ReattemptWaitSeconds: 1,
+		LoggingEnabled:       true,
+	}
+	c, err := NewClient(opts)
+
+	if err != nil {
+		t.Fatalf("Error creating client: %v", err)
+	}
+
+	defer c.Stop()
+
+	events := c.Start(time.Now())
+
+	expectedResults := []string{"test1", "test2", "test3", "test4", "test5", "test6"}
+
+	for num, result := range expectedResults {
+		// Use client pubilsh which will hit the longpoll manager's publish hook via http
+		pubErr := c.Publish(category, result)
+		if pubErr != nil {
+			t.Fatalf("Unexpected publish error: %v", pubErr)
+		}
+
+		if num == 3 {
+			// Force client to encounter a poll timeout response.
+			// Since client requests a timeout of 1 second, dealying 2 here
+			// will trigger the timeout response from server.
+			// There should be no adverse affect on the client and we should
+			// still get the expected events in our channel.
+			time.Sleep(time.Duration(2) * time.Second)
+		}
+	}
+
+	for i := 0; i < len(expectedResults); i++ {
+		select {
+		case e, ok := <-events:
+			if !ok {
+				c.Stop()
+				t.Fatal("Unexpected channel close.")
+			}
+			data, ok := e.Data.(string)
+			if !ok {
+				t.Errorf("Expected data to be a sring, got: %T", e.Data)
+			} else if data != expectedResults[i] {
+				t.Errorf("Unexpected data value, expected: %v, got: %v", expectedResults[i], data)
+			}
+
+		case <-time.After(3 * time.Second):
+			t.Error("Should have seen events.")
+		}
+	}
 }

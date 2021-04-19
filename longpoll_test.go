@@ -1,6 +1,7 @@
 package golongpoll
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -757,7 +758,6 @@ func Test_LongpollManager_WebClient_HasBufferedEvents(t *testing.T) {
 
 	// Don't forget to kill our pubsub manager's run goroutine
 	manager.Shutdown()
-
 }
 
 func Test_LongpollManager_makeTimeoutResponse(t *testing.T) {
@@ -1726,5 +1726,46 @@ func Test_WithFilePersistorAddOn(t *testing.T) {
 	if (eventResponse.Events)[1].Data != "waffles" {
 		t.Errorf("Unexpected data.  Expected: %q, got: %q", "waffles", (eventResponse.Events)[1].Data)
 	}
+}
 
+func Test_LongpollManager_PublishHandler(t *testing.T) {
+	manager, _ := StartLongpoll(Options{
+		LoggingEnabled:     true,
+		MaxEventBufferSize: 100,
+	})
+
+	// Don't forget to kill our pubsub manager's run goroutine
+	defer manager.Shutdown()
+
+	publishHandler := ajaxHandler(manager.PublishHandler)
+	subscriptionHandler := ajaxHandler(manager.SubscriptionHandler)
+
+	startTime := time.Now()
+
+	req, _ := http.NewRequest("POST", "", bytes.NewBufferString("{\"category\":\"animals\",\"data\":\"cow\"}"))
+	w := httptest.NewRecorder()
+	publishHandler.ServeHTTP(w, req)
+
+	req, _ = http.NewRequest("GET", fmt.Sprintf("?timeout=2&category=animals&since_time=%d",
+		timeToEpochMilliseconds(startTime)), nil)
+	w = httptest.NewRecorder()
+	subscriptionHandler.ServeHTTP(w, req)
+
+	// Confirm we got the correct event
+	if w.Code != http.StatusOK {
+		t.Errorf("SubscriptionHandler didn't return %v", http.StatusOK)
+	}
+	var eventResponse eventResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &eventResponse); err != nil {
+		t.Errorf("Failed to decode json: %q", err)
+	}
+	if len(eventResponse.Events) != 1 {
+		t.Fatalf("Unexpected number of events.  Expected: %d, got: %d", 1, len(eventResponse.Events))
+	}
+	if (eventResponse.Events)[0].Category != "animals" {
+		t.Errorf("Unexpected category.  Expected: %q, got: %q", "animals", (eventResponse.Events)[0].Category)
+	}
+	if (eventResponse.Events)[0].Data != "cow" {
+		t.Errorf("Unexpected data.  Expected: %q, got: %q", "cow", (eventResponse.Events)[0].Data)
+	}
 }

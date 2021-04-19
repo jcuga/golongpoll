@@ -30,24 +30,43 @@ To Run:
 ```
 Then visit: `http://127.0.0.1:8102/filepersist`
 
+## Stressor
+A simple server that shows published events on a given category and command line client(s) to stress the server via the longpoll manager's publish HTTP handler.
+
+### Server
+To Build:
+```
+go build -o stressor_server stressor/server/main.go
+```
+
+To Run:
+```
+./stressor_server -clientJs ../js-client/client.js -serve "127.0.0.1:8080" -category test123
+```
+Then visit: `http://127.0.0.1:8080/`
+
+### Client
+To Build:
+```
+go build -o stressor_client stressor/client/main.go
+```
+
+To Run:
+```
+./stressor_client -publishUrl "http://127.0.0.1:8080/publish" -category test123 -delayMs 100 -count 1000
+```
+
 
 
 TODO:
-3) custom addon example--maybe counter? perhaps not bother...
 
 4) auth example -- basic via opts or basic via header
 TODO: client and js client optional header(s) to send when making requests
     >> for any extra auth/stuff
     >> test by using basic auth this way instead
+    >> test js client and go client with pub and sub both using auth / headers
 
-then, remaining examples:
-* add publish() hooks to both go and js clients
-
-* Both clients stop/quit behavior--include in one of the other examples?
-    >> or just test and not include?
-
-all of these as chatbotplus:
-* basic auth--or custom auth via mock/hardcoded header token?
+all of these as microchat:
 * actual json not just str--use type swtich idom
 * file persist
 
