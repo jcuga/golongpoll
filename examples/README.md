@@ -56,18 +56,25 @@ To Run:
 ./stressor_client -publishUrl "http://127.0.0.1:8080/publish" -category test123 -delayMs 100 -count 1000
 ```
 
+## Authentication
+Shows how `LongpollManager.SubscriptionHandler` and `LongpollManager.PublishHandler` can be wrapped to require authentication.  The javascript and golang clients can be configured to supply HTTP basic auth or HTTP headers containing auth data.
 
+To Build:
+```
+go build -o auth_example authentication/auth.go
+```
 
-TODO:
+To Run:
+```
+./auth_example -clientJs ../js-client/client.js -serve "127.0.0.1:8080"
+```
+Then visit the HTTP address passed to `-serve`, in this case: `http://127.0.0.1:8080`
 
-4) auth example -- basic via opts or basic via header
-TODO: client and js client optional header(s) to send when making requests
-    >> for any extra auth/stuff
-    >> test by using basic auth this way instead
-    >> test js client and go client with pub and sub both using auth / headers
-
-all of these as microchat:
-* actual json not just str--use type swtich idom
+## TODO: micro chat
+* use json objects instead of strings
 * file persist
+* any auth?
+* see txt file for other things to include
 
-lastly: make sure all examples build via readme steps, can access url in readme and stdout!
+
+## FINAL TODO: confirm steps in readme work for all examples

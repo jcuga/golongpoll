@@ -33,7 +33,10 @@ func main() {
 
 	fmt.Printf("Publishing %d events with %d ms delay to %s on category: %s\n", *count, *delayMs, *publishUrl, *category)
 	for i := uint(0); i < *count; i++ {
-		lpClient.Publish(*category, fmt.Sprintf("Event #%d", i))
+		pubErr := lpClient.Publish(*category, fmt.Sprintf("Event #%d", i))
+		if pubErr != nil {
+			fmt.Printf("Error publishing event, error: %v", pubErr)
+		}
 		time.Sleep(time.Duration(*delayMs) * time.Millisecond)
 	}
 	fmt.Println("Done.")

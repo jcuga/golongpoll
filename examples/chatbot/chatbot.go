@@ -180,8 +180,8 @@ func chatBotExampleHomepage(w http.ResponseWriter, r *http.Request) {
 					document.getElementById("conversation").insertAdjacentHTML('beforeend',"<p class=\"msg-me\">" + data + "</p>");
 					document.getElementById("send-input").value = '';
 				},
-				function(resp) {
-					alert("post request failed: " + resp);
+				function(status, resp) {
+					alert("publish post request failed. status: " + status + ", resp: " + resp);
 				});
 			};
 	</script>

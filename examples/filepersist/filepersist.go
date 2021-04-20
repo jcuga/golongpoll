@@ -121,10 +121,10 @@ func filePersistorExampleHomepage(w http.ResponseWriter, r *http.Request) {
 			function () {
 				document.getElementById("publish-input").value = '';
 			},
-			function(resp) {
-				alert("publish post request failed: " + resp);
+			function(status, resp) {
+				alert("publish post request failed. status: " + status + ", resp: " + resp);
 			}
-			);
+		);
 	};
 
 </script>

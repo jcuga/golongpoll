@@ -93,18 +93,25 @@ var golongpoll = {
                     var xmlHttp = new XMLHttpRequest();
                     var clientThis = this;
                     // NOTE: includes optional user/password for basic auth
-                    xmlHttp.open("POST", client.publishUrl, true, client.basicAuthUsername, client.basicAuthPassword); // true for asynchronous
+                    xmlHttp.open("POST", client.publishUrl, true); // true for asynchronous
+                    // optional basic auth
+                    if (client.basicAuthUsername) {
+                        xmlHttp.setRequestHeader('Authorization', 'Basic ' + window.btoa(window.unescape(window.encodeURIComponent(client.basicAuthUsername + ':' + client.basicAuthPassword))))
+                    }
                     xmlHttp.onload = function () {
-                        var respJson = JSON.parse(xmlHttp.response);
+                        var respJson = "";
+                        if (xmlHttp.status == 200 && xmlHttp.response) {
+                            respJson = JSON.parse(xmlHttp.response);
+                        }
                         if (respJson && respJson.success === true) {
                             clientThis.log("Publish success on category: " + category);
                             if (onSuccess) {
                                 onSuccess();
                             }
                         } else {
-                            clientThis.log("Publish failed, response: " + xmlHttp.response);
+                            clientThis.log("Publish failed, status: " + xmlHttp.status + " response: " + xmlHttp.response);
                             if (onFail) {
-                                onFail(xmlHttp.response);
+                                onFail(xmlHttp.status, xmlHttp.response);
                             }
                         }
                     };
@@ -206,8 +213,12 @@ var golongpoll = {
                             }
                         }
                 };
-                // NOTE: includes optional user/password for basic auth
-                xmlHttp.open("GET", pollUrl, true, client.basicAuthUsername, client.basicAuthPassword); // true for asynchronous
+
+                xmlHttp.open("GET", pollUrl, true); // true for asynchronous
+                // optional basic auth
+                if (client.basicAuthUsername) {
+                    xmlHttp.setRequestHeader('Authorization', 'Basic ' + window.btoa(window.unescape(window.encodeURIComponent(client.basicAuthUsername + ':' + client.basicAuthPassword))))
+                }
 
                 // Add any optional request headers
                 for (var i = 0; i < client.extraRequestHeaders.length; i++) {
