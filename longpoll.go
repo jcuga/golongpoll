@@ -318,7 +318,8 @@ func newclientSubscription(subscriptionCategory string, lastEventTime time.Time,
 	return &subscription, nil
 }
 
-type publishData struct {
+// PublishData is the json data that LongpollManager.PublishHandler expects.
+type PublishData struct {
 	Category string      `json:"category"`
 	Data     interface{} `json:"data"`
 }
@@ -336,7 +337,7 @@ func getLongPollPublishHandler(manager *LongpollManager) func(w http.ResponseWri
 		}
 
 		decoder := json.NewDecoder(r.Body)
-		var pubData publishData
+		var pubData PublishData
 		err := decoder.Decode(&pubData)
 		if err != nil {
 			w.WriteHeader(http.StatusBadRequest)

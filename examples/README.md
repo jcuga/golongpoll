@@ -70,11 +70,17 @@ To Run:
 ```
 Then visit the HTTP address passed to `-serve`, in this case: `http://127.0.0.1:8080`
 
-## TODO: micro chat
-* use json objects instead of strings
-* file persist
-* any auth?
-* see txt file for other things to include
+## microchat
+Simple dummy chat server that uses the standard publish/subscribe hooks.
 
+To Build:
+```
+go build -o microchat_example microchat/microchat.go
+```
 
-## FINAL TODO: confirm steps in readme work for all examples
+To Run:
+```
+./microchat_example -clientJs ../js-client/client.js -serve "127.0.0.1:8080"
+```
+
+Then visit `http://127.0.0.1:8080/` in multiple browsers to chat.

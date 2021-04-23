@@ -369,11 +369,6 @@ func (c Client) fetchEvents(since int64, lastID string) (*pollResponse, error) {
 	return &pollResp, nil
 }
 
-type publishRequest struct {
-	Category string      `json:"category"`
-	Data     interface{} `json:"data"`
-}
-
 type publishResponse struct {
 	Success bool   `json:"success"`
 	Error   string `json:"error"`
@@ -402,7 +397,7 @@ func (c Client) Publish(category string, data interface{}) error {
 		return errors.New("data must be non-nil.")
 	}
 
-	publishData := publishRequest{Category: category, Data: data}
+	publishData := golongpoll.PublishData{Category: category, Data: data}
 	jsonData, err := json.Marshal(publishData)
 	if err != nil {
 		if c.options.LoggingEnabled {

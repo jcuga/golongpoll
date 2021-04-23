@@ -40,4 +40,5 @@ examples/filepersist_example.data
 examples/stressor_client
 examples/stressor_server
 examples/auth_example
+examples/microchat_example
 
