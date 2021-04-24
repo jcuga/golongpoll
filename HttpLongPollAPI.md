@@ -1,12 +1,10 @@
 # Golongpoll HTTP API
-There is an official [golang client](../client/README.md) and [javascript client](../js-client/README.md) library for golongpoll, but custom clients can be written to conform to the followign specs.
+There are an official [golang client](client/README.md) and [javascript client](js-client/README.md) libraries for `golongpoll`, but custom clients can be written to conform to the followign specs.
 
-Note that the URLs for publish and subscribe are up to you--wherever you want to expose the two handlers.
+Note that the URLs for publish and subscribe are up to you--wherever you want to expose the two handlers. If you only want to support or expose publishing or subscribing, simply don't serve that handler.
 
 ```
 manager, _ := golongpoll.StartLongpoll(golongpoll.Options{})
-
-// serve event url
 mux := http.NewServeMux()
 mux.HandleFunc("/events", manager.SubscriptionHandler)
 mux.HandleFunc("/publish", manager.PublishHandler)
@@ -15,10 +13,11 @@ server := &http.Server{Addr: "127.0.0.1:8081", Handler: mux}
 
 One can also wrap these handlers with their own logic instead of serving them directly. See [Examples](examples/README.md), namely the [authentication](examples/authentication/auth.go) one on how to wrap these with header-based auth checks.
 
+
 ## Subscribe
 `LongpollManager.SubscriptionHandler`
 
-### Request Query Parameters
+### Request GET Query Parameters
 The subscription handler use the following `HTTP GET` query parameters:
 
 * `category` - required.  This is the subscription category to subscribe to.  This can be any string as lont as it's between 1-1024 in length. Currently only one category per request is supported.
@@ -38,7 +37,7 @@ The response is HTTP 200 with JSON that has one of three forms.
 2. Timeout Message: `{"timeout":"no events before timeout","timestamp":1616210844178}`
 3. Error response: `{"error": "Invalid or missing 'timeout' arg.  Must be 1-110."}`
 
-### Examples
+### Subscibe Examples
 
 #### Get New Events
 In this example, `since_time` is not provided so we only ask for new events (published since now).  Note that the response is an array of event objects.
@@ -95,4 +94,62 @@ curl -v "http://127.0.0.1:8081/events?category=foobar&since_time=1615265400748"
 The issue above is that the required parameter `timeout` was not included in the request.
 
 ## Publish
-todo
+`LongpollManager.PublishHandler`
+
+### Request POST Data
+The publish handler expects `application/json` post data.  The JSON should have the following two fields:
+* `category` string category, must be between 1-1024 characters.
+* `data` is arbitrary event data, must be non-null.
+
+### Response JSON
+The response is JSON that has one of two forms.
+1. Success - HTTP 200 with json: `{"success": true}`
+2. Failure - HTTP 400 with json: `{"error": "Invalid or missing 'data' arg, must be non-nil."}`
+
+### Publish Examples
+
+#### Publish string Data
+To publish an event with simple string payload data:
+```
+curl -v --data '{"category":"somecoolcategory", "data":"hello world"}' http://127.0.0.1:8080/path/to/publish
+
+< HTTP/1.1 200 OK
+< Content-Type: application/json
+< X-Content-Type-Options: nosniff
+< Date: Sat, 24 Apr 2021 03:41:36 GMT
+< Content-Length: 17
+< 
+* Connection #0 to host 127.0.0.1 left intact
+{"success": true}
+```
+
+#### Publish JSON Data
+To publish an event with json payload data:
+```
+curl -v --data '{"category":"chatroom-1234", "data":{"display_name": "user123", "chat": "Hi everyone!"}}' http://127.0.0.1:8080/path/to/publish
+
+< HTTP/1.1 200 OK
+< Content-Type: application/json
+< X-Content-Type-Options: nosniff
+< Date: Sat, 24 Apr 2021 03:45:13 GMT
+< Content-Length: 17
+< 
+* Connection #0 to host 127.0.0.1 left intact
+{"success": true}pi@cowpi:~/code/golongpoll/examples $ 
+
+```
+
+#### Publish Error
+You will get a JSON response with an `error` field.
+```
+curl -v --data '{"category":"something", "data":null}' http://127.0.0.1:8080/post
+
+< HTTP/1.1 400 Bad Request
+< Content-Type: application/json
+< X-Content-Type-Options: nosniff
+< Date: Sat, 24 Apr 2021 03:47:15 GMT
+< Content-Length: 60
+< 
+* Connection #0 to host 127.0.0.1 left intact
+{"error": "Invalid or missing 'data' arg, must be non-nil."}
+```
