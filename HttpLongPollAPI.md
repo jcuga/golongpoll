@@ -13,7 +13,7 @@ mux.HandleFunc("/publish", manager.PublishHandler)
 server := &http.Server{Addr: "127.0.0.1:8081", Handler: mux}
 ```
 
-One can also wrap these handlers with their own logic instead of serving them directly. See [Examples](../examples/README.md), namely the `authentication` one on how to wrap these with header-based auth checks.
+One can also wrap these handlers with their own logic instead of serving them directly. See [Examples](golongpoll/tree/master/examples), namely the [authentication](golongpoll/tree/master/examples/authentication) one on how to wrap these with header-based auth checks.
 
 ## Subscribe
 `LongpollManager.SubscriptionHandler`
