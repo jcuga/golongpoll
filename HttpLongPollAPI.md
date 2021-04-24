@@ -1,4 +1,4 @@
-# HTTP LongPoll API
+# Golongpoll HTTP API
 There is an official [golang client](../client/) and [javascript client](../js-client/) library for golongpoll, but custom clients can be written to conform to the followign specs.
 
 Note that the URLs for publish and subscribe are up to you--wherever you want to expose the two handlers.
@@ -13,10 +13,10 @@ mux.HandleFunc("/publish", manager.PublishHandler)
 server := &http.Server{Addr: "127.0.0.1:8081", Handler: mux}
 ```
 
-One can also wrap these handlers with their own logic instead of serving them directly. See [Examples](../examples/), namely the [authentication](../examples/authentication/) one on how to wrap these with HEADER based auth checks.
+One can also wrap these handlers with their own logic instead of serving them directly. See [Examples](../examples/README.md), namely the `authentication` one on how to wrap these with header-based auth checks.
 
 ## Subscribe
-`LongpollManager.SubscriptionHandler` can be served on whatever URL desired.  There are many ways to do this in golang, for example:
+`LongpollManager.SubscriptionHandler`
 
 ### Request Query Parameters
 The subscription handler use the following `HTTP GET` query parameters:
