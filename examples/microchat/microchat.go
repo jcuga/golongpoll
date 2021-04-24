@@ -1,6 +1,6 @@
 // Super simple chat server with some pre-defined rooms and login-less posting
 // using display names. No attempt is made at security.
-// This shows how one could use categories and the longpol pub-sub to make
+// This shows how one could use categories and the longpoll pub-sub to make
 // a chat server with individual rooms/topics.
 package main
 
