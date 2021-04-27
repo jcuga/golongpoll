@@ -3,6 +3,8 @@ If you want go code to interact with the longpoll server via HTTP (i.e. hit `Lon
 
 See [client go docs](https://pkg.go.dev/github.com/jcuga/golongpoll/client) for full options and details.
 
+If you want to write your own client, see [HttpLongPollAPI.md](HttpLongPollAPI.md).
+
 ## Quickstart
 
 ### Creating a Client
