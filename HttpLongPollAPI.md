@@ -1,5 +1,5 @@
 # Golongpoll HTTP API
-There are an official [golang client](client/README.md) and [javascript client](js-client/README.md) libraries for `golongpoll`, but custom clients can be written to conform to the followign specs.
+There are an official [golang client](client/README.md) and [javascript client](js-client/README.md) libraries for `golongpoll`, but custom clients can be written to conform to the following specs.
 
 Note that the URLs for publish and subscribe are up to you--wherever you want to expose the two handlers. If you only want to support or expose publishing or subscribing, simply don't serve that handler.
 
@@ -28,7 +28,7 @@ The subscription handler use the following `HTTP GET` query parameters:
 ### Response JSON
 The response is HTTP 200 with JSON that has one of three forms.
 
-1. Events: `{"events":[{"timestamp":1616040198889,"category":"foobar","data":"coool beans dawg","id":"7c17587a-3437-4861-bef7-8f29905589e4"}]}`
+1. Events: `{"events":[{"timestamp":1616040198889,"category":"foobar","data":"cool beans dawg","id":"7c17587a-3437-4861-bef7-8f29905589e4"}]}`
     * `events` is an array of event objects.  If we get the `events` key in our json, then the array should be non-empty. (otherwise we'll get an error or timeout response instead). Each `event` object in the array has the following fields:
       * `timestamp` is the event's publish timestamp in epoch milliseconds.
       * `category` is the subscribed category
@@ -135,7 +135,7 @@ curl -v --data '{"category":"chatroom-1234", "data":{"display_name": "user123", 
 < Content-Length: 17
 < 
 * Connection #0 to host 127.0.0.1 left intact
-{"success": true}pi@cowpi:~/code/golongpoll/examples $ 
+{"success": true}
 
 ```
 
