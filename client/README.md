@@ -92,4 +92,4 @@ You can use `ClientOptions.BasicAuthUsername`/`ClientOptions.BasicAuthPassword` 
 
 See [ClientOptions docs](https://pkg.go.dev/github.com/jcuga/golongpoll/client#ClientOptions) for more details.
 
-Also see the [authentication example](examples/authentication/auth.go).
+Also see the [authentication example](/examples/authentication/auth.go).

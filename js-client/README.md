@@ -4,7 +4,7 @@ If you want to use golongpoll subscribe and/or publish from the browser, you can
 This is fairly basic, old-style javascript.  If you want to write your own js client, see [HttpLongPollAPI.md](/HttpLongPollAPI.md).
 
 ## How to Use
-See the function [golongpoll.newClient](/js-client/client.js) on how to use.  The options passed to this function mirror those used by the [golang client.ClientOptions](https://pkg.go.dev/github.com/jcuga/golongpoll/client#ClientOptions).  The function `newClient` returns the client on success, or `null` on failure due to bad config arguments. Once created via `newClient` the client will begin polling or the subscribed events on the `category` argument.
+See the function [golongpoll.newClient](/js-client/client.js) on how to use.  The options passed to this function mirror those used by the [golang client.ClientOptions](https://pkg.go.dev/github.com/jcuga/golongpoll/client#ClientOptions).  The function `newClient` returns the client on success, or `null` on failure due to bad config arguments. Once created via `newClient` the client will begin polling or the subscribed events on the `category` argument. Unlike the golang client, there is no need to call start to begin polling for events.
 
 The main difference between this javascript client and the golang client are the following two options passed to `newClient`:
 
@@ -51,7 +51,7 @@ client.publish("some-category", data,
 };
 ```
 
-Note: to prevent clients from publishing events, one can simply not serve `LongpollManager.PublishHandler`, or wrap the handler in a function that adds auth/validation checks. Also see the [authentication example](examples/authentication/auth.go).
+Note: to prevent clients from publishing events, one can simply not serve `LongpollManager.PublishHandler`, or wrap the handler in a function that adds auth/validation checks. Also see the [authentication example](/examples/authentication/auth.go).
 
 ### Example
 See [examples/microchat/microchat.go](/examples/microchat/microchat.go) for an example of how to use a js client to subscribe and publish data.
