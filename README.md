@@ -10,7 +10,7 @@ Golang long polling library. Makes web pub-sub easy via HTTP long-poll servers a
 
 ## QuickStart
 To create a longpoll server:
-```
+```go
 import (
   "github.com/jcuga/golongpoll"
 )

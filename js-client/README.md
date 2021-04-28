@@ -39,7 +39,7 @@ client.Publish("some-category", someData, onSuccess, onError);
 ```
 
 For example:
-```
+```js
 client.publish("some-category", data,
     function () {
         // optionally do somethign on success

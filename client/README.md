@@ -9,7 +9,7 @@ If you want to write your own client, see [HttpLongPollAPI.md](/HttpLongPollAPI.
 
 ### Creating a Client
 Use `NewClient` with `ClientOptions`.
-```
+```go
 import (
     "net/url"
     "github.com/jcuga/golongpoll/client"
@@ -37,7 +37,7 @@ This will create the client but not yet start its subscription goroutine that po
 ### Starting event subscription poll goroutine
 `Client.Start(pollSince time.Time)` starts http longpolling for new events in its own goroutine and returns a channel of `golongpoll.Event` that will convey any new events since the `pollSince` argument.  This example only asks for new events (since now), but you could specify a time in the past.
 
-```
+```go
 for event := range c.Start(time.Now()) {
     // do something with each event
 }
@@ -46,7 +46,7 @@ for event := range c.Start(time.Now()) {
 Note these examples use a for-range loop over the channel, you could do channel reads directly, or use with `select` as well.
 
 Since `golongpoll.Event.Data` is of type `interface{}`, you have to convert to the expected type:
-```
+```go
 for event := range c.Start(time.Now()) {
     // assuming all events are strings
     msg := event.Data.(string)
@@ -55,7 +55,7 @@ for event := range c.Start(time.Now()) {
 ```
 
 If there can be multiple types of data, you can use a type switch:
-```
+```go
 for event := range c.Start(time.Now()) {
     switch v := i.(type) {
     case string:
