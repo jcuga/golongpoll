@@ -3,7 +3,6 @@ go:
  - 1.9
  - 1.11
  - 1.16
- - tip
 
 script:
  - go test -v ./...

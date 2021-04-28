@@ -1741,6 +1741,7 @@ func Test_LongpollManager_PublishHandler(t *testing.T) {
 	subscriptionHandler := ajaxHandler(manager.SubscriptionHandler)
 
 	startTime := time.Now()
+	time.Sleep(50 * time.Millisecond)
 
 	req, _ := http.NewRequest("POST", "", bytes.NewBufferString("{\"category\":\"animals\",\"data\":\"cow\"}"))
 	w := httptest.NewRecorder()
