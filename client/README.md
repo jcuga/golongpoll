@@ -72,14 +72,14 @@ for event := range c.Start(time.Now()) {
 
 ### Stop polling for subscribed events
 To stop the client's longpoll subscription goroutine which will also close the channel returned by `Client.Start`, call `Client.Stop()`
-```
+```go
 c.Stop()
 ```
 
 ### Publish events
 The client itself can optionally publish data as well as subscribe to events.  Simply call `Client.Publish(category string, data interface{})`
 
-```
+```go
 err: = c.Publish("news", "I am using golongpoll")
 ```
 

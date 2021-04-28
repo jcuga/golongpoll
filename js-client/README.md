@@ -8,7 +8,7 @@ See the function [golongpoll.newClient](/js-client/client.js) on how to use.  Th
 
 The main difference between this javascript client and the golang client are the following two options passed to `newClient`:
 
-```
+```js
     onEvent = function (event) {},
     onFailure = function (errorMsg) { return true; },
 ```
@@ -28,13 +28,13 @@ Example with json payload: `{"timestamp": 1619395200021, "category": "some-cateo
 `onFailure` is an optional callback (can be omitted) that gets called when an error occurs while trying to long-poll for subscribed event data. The callback accepts an error string. If this callback returns `false`, then the client will stop polling for new events.  If returns `true` (default when omitted), the client will wait `client.reattemptWaitSeconds` before starting next poll request.
 
 ## To stop polling for events
-```
+```js
 client.stop();
 ```
 
 ## Publish events
 The client can publish in addition to receiving subscribed events.
-```
+```js
 client.Publish("some-category", someData, onSuccess, onError);
 ```
 
