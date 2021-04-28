@@ -1,173 +1,51 @@
 # golongpoll [![Build Status](https://travis-ci.com/jcuga/golongpoll.svg?branch=master)](https://travis-ci.com/jcuga/golongpoll) [![codecov](https://codecov.io/gh/jcuga/golongpoll/branch/master/graph/badge.svg)](https://codecov.io/gh/jcuga/golongpoll)  [![GoDoc](https://godoc.org/github.com/jcuga/golongpoll?status.svg)](https://godoc.org/github.com/jcuga/golongpoll) [![Go Report Card](https://goreportcard.com/badge/jcuga/golongpoll)](https://goreportcard.com/report/jcuga/golongpoll)
-Golang long polling library. Makes web pub-sub easy via an HTTP long-poll server.
+Golang long polling library. Makes web pub-sub easy via HTTP long-poll servers and clients.  Supports golang v1.7 and up.
 
-New in v1.1
-=================
-- Deprecated ```CreateManager``` and ```CreateCustomManager``` in favor of ```StartLongpoll```
-  -  The deprecated functions still work but they log warnings when called.
-  -  ```StartLongpoll``` takes an ```Options``` struct that allows you to configure more behavior.  See [Options] (#options)
-- Event expiration via the ```EventTimeToLiveSeconds``` option.  
-- Bug fixes for client disconnects
+## Resources
+* [go docs](https://pkg.go.dev/github.com/jcuga/golongpoll)
+* [examples](/examples/README.md) - shows how to use the longpoll server and go/js clients.
+* [go client](/client/README.md)
+* [javascript client](/js-client/README.md)
+* [longpoll http api](/HttpLongPollAPI.md) - in case you want to create your own client.
 
-Basic usage
-=================
-To use, create a ```LongpollManager``` and then use it to publish events and expose an HTTP handler to subscribe to events.
+## QuickStart
+To create a longpoll server:
 ```go
-import	"github.com/jcuga/golongpoll"
+import (
+  "github.com/jcuga/golongpoll"
+)
 
-// This launches a goroutine and creates channels for all the plumbing
-manager, err := golongpoll.StartLongpoll(golongpoll.Options{})  // default options
-
-// Pass the manager around or create closures and publish:
-manager.Publish("subscription-category", "Some data.  Can be string or any obj convertable to JSON")
-manager.Publish("different-category", "More data")
-
-// Expose events to browsers
-// See subsection on how to interact with the subscription handler
-http.HandleFunc("/events", manager.SubscriptionHandler)
-http.ListenAndServe("127.0.0.1:8081", nil)
-```
-For a working demo, see [basic.go](examples/basic/basic.go).
-
-Note that you can add extra access-control, validation, or other behavior on top of the manager's SubscriptionHandler.  See the [advanced example](#advanced).  This example also shows how to publish a more complicated payload JSON object.
-
-You can also configure the ```LongpollManager``` by defining values in the ```golongpoll.Options``` param passed to ```StartLongpoll(opts)```
-
-Options
------
-The default options should work for most people's needs.  However, if you are worried about old events sitting around taking up space and want to fine tune how long events last inside the internal buffers you can roll up your sleeves and configure the ```LongpollManager```.  This applies most to programs that are going to deal with a 'large' number of events over a 'long' period of time. 
-
-The following options are now available.
-- ```LoggingEnabled bool```: Whether or not to output logs about events, subscriptions, and clients.  Defaults to false.
-- ```MaxLongpollTimeoutSeconds int```: Max amount of time clients are allowed to keep a longpoll connection.  This is used against the ```timeout```: Query param sent to the ```SubscriptionHandler```.  Defaults to 110.
-- ```MaxEventBufferSize int```: The max number of events kept in a given subscription category before the oldest events are discarded even if they're not expired yet.  Buffering is important if you want to let clients request events from the past, or if you have high-volume events that occur in spurts and you don't clients to miss anything.  Defaults to 250.
-- ```EventTimeToLiveSeconds int```: How long events can remain in the internal buffer before they're discarded for being too old.  This determines how long in the past clients can see events (they can provide a ```since_time``` query param to request old events).  Defaults to the constant ```golongpoll.FOREVER``` which means they never expire.  If you're concerned about old events sitting around in the internal buffers wasting space (especially if you're generating a large number of events and running the program for long periods of time), you can set a reasonable expiration and they automatically be removed once expired.
-- ```DeleteEventAfterFirstRetrieval bool```:  Whether or not an event is immediately deleted as soon as it is retrieved by a client (via the ```SubscriptionHandler```).  This is useful if you only have one client per subscription category and you only care to see event's once.  This may be useful for a notification type scenario where each client has a subscription category and you only see events once.  Alternatively, clients could just update their ```since_time``` param in their longpoll request to be that of the timestamp of their most recent notification, thus causing previously seen notifications to not be retrieved.  But there may be other scenarios where this option is more desirable since people have asked for this.  Defaults to false.
-
-These are set on the ```golongpoll.Options``` struct that gets passed to ```golongpoll.StartLongpoll```.  For example:
-```go
-	manager, err := golongpoll.StartLongpoll(golongpoll.Options{
-		LoggingEnabled:                 true,
-		MaxLongpollTimeoutSeconds:      60,
-		MaxEventBufferSize:             100,
-		EventTimeToLiveSeconds:         60 * 2, // Event's stick around for 2 minutes
-		DeleteEventAfterFirstRetrieval: false,
-	})
-```
-Or if you want the defauls, just provide an empty struct, or a struct that only defines the options you want to override.
-```go
-// all default options:
+// This uses the default/empty options. See section on customizing, and Options go docs.
 manager, err := golongpoll.StartLongpoll(golongpoll.Options{})
 
-// Default options with EventTimeToLiveSeconds override:
-manager, err := golongpoll.StartLongpoll(golongpoll.Options{
-			EventTimeToLiveSeconds:         60 * 2,
-	})
+// Expose pub-sub. You could omit the publish handler if you don't want
+// to allow clients to publish. For example, if clients only subscribe to data.
+if err == nil {
+  http.HandleFunc("/events", manager.SubscriptionHandler)
+  http.HandleFunc("/publish", manager.PublishHandler)
+  http.ListenAndServe("127.0.0.1:8101", nil)
+} else {
+  // handle error creating longpoll manager--typically this means a bad option.
+}
 ```
 
-HTTP Subscription Handler
------
-The ```LongpollManager``` has a field called ```SubscriptionHandler``` that you can attach as an ```http.HandleFunc```.
+The above snippet will create a [LongpollManager](https://pkg.go.dev/github.com/jcuga/golongpoll#LongpollManager) which has a `SubscriptionHandler` and a `PublishHandler` that can served via http (or using https).  When created, the manager spins up a separate goroutine that handles the plumbing for pub-sub.
 
-This HTTP handler has the following URL query params as input.
+`LongpollManager` also has a [Publish](https://pkg.go.dev/github.com/jcuga/golongpoll#LongpollManager.Publish) function that can be used to publish events. You can call `manager.Publish("some-category", "some data here")` and/or expose the `manager.PublishHandler` and allow publishing of events via the [longpoll http api](/HttpLongPollAPI.md).  For publishing within the same program as the manager/server, calling `manager.Publish()` does not use networking--under the hood it uses the go channels that are part of the pub-sub plumbing.  You could also wrap the manager in an http handler closure that calls publish as desired.
 
-* ```timeout``` number of seconds the server should wait until issuing a timeout response in the event there are no new events during the client's longpoll.  The default manager has a max timeout of 110 seconds, but you can customize this by using ```Options.MaxLongpollTimeoutSeconds```
-* ```category``` the subscription category to subscribe to.  When you publish an event, you publish it on a specific category.
-* ```since_time``` optional.  the number of milliseconds since epoch.  If not provided, defaults to current time.  This tells the longpoll server to only give you events that have occurred since this time.  
+See the [Examples](/examples/README.md) on how to use the golang and javascript clients as well as how to wrap the `manager.PublishHandler` or call `manager.Publish()` directly.
 
-The response from this HTTP handler is one of the following ```application/json``` responses:
+## How it Works
+You can think of the longpoll manager as a goroutine that uses channels to service pub-sub requests.  The manager has a `map[string]eventBuffer` (actually a `map[string]*expiringBuffer`) that holds events per category as well as a data structure (another sort of map) for the subscription request book-keeping.  The `PublishHandler` and `SubscribeHandler` interact with the manager goroutine via channels.
 
-* error response: ```{"error": "error message as to why request failed."}```
-  * Perhaps you forgot to include a query param?  Or an invalid timeout? 
-* timeout response: ```{"timeout":"no events before timeout","timestamp":1450827183289}``` 
-  * This means no events occurred within the timeout window.  (also given your ```since_time``` param) 
-  * The timestamp is the server time when it issued a timeout response, so you can use this value as since_time in your next request.
-* event(s) response: ```{"events":[{"timestamp":1447218359843,"category":"farm","data":"Pig went 'Oink! Oink!'"}]}```
-  * includes one or more event object.  If no events occurred, you should get a timeout instead. 
+The events are stored using in memory buffers that have a configured max number of events per category.  Optionally, the events can be automatically removed based on a time-to-live setting.  Since this is all in-memory, there is an optional add-on for auto-persisting and repopulating data from disk.  This allows events to persist across program restarts (not the default option/behavior!) One can also create their own custom add-on as well.  See the `Customizing` section.
 
-To receive a continuous stream of chronological events, you should keep hitting the http handler after each response, but with an updated ```since_time``` value equal to that of the last event's timestamp. 
+One important limitation/design-decision to be aware of: the `SubscriptionHandler` supports subscribing to a *single cateogry*.  If you want to subscribe to more than one category, you must make more than one call to the subscription handler--or create multiple clients each with a different category.  Note however that clients are free to publish to more than one categor--to any category really, unless the manager's publish handler is not being served or there is wrapping handler logic that forbids this.  Whether or not this limitation is a big deal depends on how you are using categories. This decision reduces the internal complexity and is likely not to change any time soon. 
 
-You can see how to make these longpoll requests using jquery by viewing the example programs' code.
+## Customizing
+See [golongpoll.Options](https://pkg.go.dev/github.com/jcuga/golongpoll#Options) on how to configure the longpoll manager.  This includes:
+* `MaxEventBufferSize` - for the max number of events per category, after which oldest-first is truncated. Defaults to 250.
+* `EventTimeToLiveSeconds` - how long events exist in the buffer, defaults to forever (as long as `MaxEventBufferSize` isn't reached).
+* `AddOn` - optional way to provide custom behavior. The only add-on at the moment is [FilePersistorAddOn](/fileaddon.go) (Usage [example](/examples/filepersist/filepersist.go)). See [AddOn interface](/addons.go) for creating your own custom add-on.
 
-What is longpolling
-=================
-Longpolling is a way to get events/data "pushed" to the browser as soon as they occur* (with a usually very small delay).  Longpolling is an option to consider when you want updates to be sent from the webserver to a browser as they occur.  This is a one-way communication path.  If you need full-duplex communication, consider an alternative like websockets.  
-
-To better understand longpolling, let's consider what it improves upon.  A naive way to get updates as soon as possible from a webserver is to continuously make AJAX requests from a webpage asking the server if there is anything new.
-
-![polling diagram](https://raw.githubusercontent.com/jcuga/golongpoll/master/readme-images/polling.png)
-
-The problem with this approach is that when there are no updates, you are continuously spamming the webserver with new requests.  An alternative approach is to have the webserver wait until there is actually data before responding to your request.
-
-![longpolling diagram](https://raw.githubusercontent.com/jcuga/golongpoll/master/readme-images/longpoll.png)
-
-This is an improvement since both the client and the server aren't setting up and tearing down connections so quickly.  But you can't just wait forever to hear from the server.  So longpolling has the concept of a timeout.  If the server waits too long and there are no new events, the server responds to the client that there's nothing new.  The client can then initiate a new longpoll request.
-
-![longpolling diagram](https://raw.githubusercontent.com/jcuga/golongpoll/master/readme-images/longpoll-timeout.png)
-
-Essentially, longpolling is a much more sane version of spamming the server with a bunch of requests asking for new data.  
-
-**Why not just use websockets instead?**
-Websockets are great if you need to push data in both directions.  But if you're really interested in pushing data from the server to the client and not vice-versa, then longpolling may be a viable option for a number of reasons.  
-
-* longpolling is just simple, plain old HTTP.  The server is just... slow to respond at times.
-  * This means much wider range of browser support, especially the older ones
-  * Will work over infrastructure that uses proxies that only allow port 80/443
-  * Also works well through VPN webclient type products that do "magic" to web traffic
-    * As a general rule, the closer to traditional HTTP you are, the wider support you have. 
-
-*Why does everyone run to websockets even when they only need server-to-client pushing?*
-Probably because it's difficult to get longpolling right.  By this I mean handling the subtleties on the server end to make sure that any events that occur in the small window between the time that a client gets a response and before they make a new request, handling disconnects, and buffering older events in case clients went offline.  There is a plethora of posts on the internet to make a half-baked longpoll server, but few if any posts outline how to make a robust one.  (that's why you should use golongpoll--it will do this for you!).
-
-Also, depending on what language you're writing the webserver in, longpolling might be more difficult.  Think python running in a WSGI container.  Without the flexibility of golang and it's channels, such implementations could be quite the headache.
-
-Included examples
-=================
-There are two fully-functional example programs provided. 
-Basic
------
-This program creates a default ```LongpollManager```, shows how a goroutine can generate some events, and how to subscribe from a webpage.  See [basic.go](examples/basic/basic.go)
-
-To run this example
-```bash
-go build examples/basic/basic.go
-./basic
-OR: ./basic.exe
-```
-Then visit:
-```
-http://127.0.0.1:8081/basic
-```
-And observe the events appearing every 0-5 seconds.
-
-Advanced
------
-This program creates a custom ```LongpollManager```, shows how an http handler can publish events, and how to subscribe from a webpage.  See [advanced.go](examples/advanced/advanced.go)
-
-To run this example
-```bash
-go build examples/advanced/advanced.go
-./advanced
-OR: ./advanced.exe
-```
-Then visit:
-```
-http://127.0.0.1:8081/advanced
-```
-Try clicking around and notice the events showing up in the tables.  Try opening multiple windows as different users and observe events.  Toggle whether user's events are public or private.
-
-More advanced use
-=================
-All of the below topics are demonstrated in the advanced example:
-
-Events with JSON payloads
------
-Try passing any type that is convertible to JSON to ```Publish()```. If the type can be passed to encoding/json.Marshal(), it will work.
-
-Wrapping subscriptions
------
-You can create your own HTTP handler that calls ```LongpollManager.SubscriptionHandler``` to add your own layer of logic on top of the subscription handler.  Uses include: user authentication/access-control and limiting subscriptions to a known set of categories.
-
-Publishing events via the web
------
-You can create a closure that captures the LongpollManager and attach it as an http handler function.  Within that function, simply call Publish(). 
+Remember, you don't have to expose `LongpollManager.SubscriptionHandler` and `PublishHandler` directly (or at all).  You can wrap them with your own http handler that adds additional logic or validation before invoking the inner handler.  See the [authentication example](/examples/authentication/auth.go) for how to require auth via header data before those handlers get called.  For publishing, you can also call `manager.Publish()` directly, or wrap the manager via a closure to create a custom http handler that publishes data.
