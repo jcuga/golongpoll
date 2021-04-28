@@ -12,11 +12,11 @@ Use `NewClient` with `ClientOptions`.
 ```
 import (
     "net/url"
-	"github.com/jcuga/golongpoll/client"
+    "github.com/jcuga/golongpoll/client"
 )
 
 func main() {
-	subUrl, _ := url.Parse("http://127.0.0.1:8080/path/to/SubscriptionHandler")
+    subUrl, _ := url.Parse("http://127.0.0.1:8080/path/to/SubscriptionHandler")
     pubUrl, _ := url.Parse("http://127.0.0.1:8080/path/to/PublishHandler")
 
     c, err := client.NewClient(client.ClientOptions{

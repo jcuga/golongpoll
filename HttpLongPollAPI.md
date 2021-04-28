@@ -1,7 +1,7 @@
 # Golongpoll HTTP API
-There are an official [golang client](client/README.md) and [javascript client](js-client/README.md) libraries for `golongpoll`, but custom clients can be written to conform to the following specs.
+There is an official [golang client](client/README.md) and [javascript client](js-client/README.md) library for `golongpoll`, but custom clients can be written to conform to the following specs.
 
-Note that the URLs for publish and subscribe are up to you--wherever you want to expose the two handlers. If you only want to support or expose publishing or subscribing, simply don't serve that handler.
+Note that the URLs for publish and subscribe are up to you--wherever you want to expose the two handlers. If you only want to support/expose publishing or subscribing, simply don't serve the other handler.
 
 ```
 manager, _ := golongpoll.StartLongpoll(golongpoll.Options{})
@@ -23,7 +23,7 @@ The subscription handler use the following `HTTP GET` query parameters:
 * `category` - required.  This is the subscription category to subscribe to.  This can be any string as lont as it's between 1-1024 in length. Currently only one category per request is supported.
 * `timeout` - required.  This is how long the server should hold on to this request (in seconds) when there are no events to reply with.  Long polling involves the server waiting until events become available before responding, up until a timeout.  Values must be between 1 and whatever `Options.MaxLongpollTimeoutSeconds` is set to when creating the manager via `StartLongpoll(options)`.  Be aware that this should be set to less than any connection timeout setting in any proxy/webserver sitting in front of the application.  For example: `nginx` has a default timeout of 60 seconds, so one would want to use some value less than that to avoid a connection timeout before receiving a HTTP 200 with a API level longpoll timeout in the JSON response (see example responses below).
 * `since_time` - optional. This is the time in UTC epoch milliseconds to get events since.  Without this, defaults to current time, meaning the client will only see new events.
-* `last_id` - optional, but must include `since_time` if including this.  This is the last seen event's `id` value.  This is used in conjunction with `since_time` set to the last seen event's timestamp to pick up where the previously seen event left off.  This is necessary to avoid missing events in the scenario where clients get an event but a 2nd event was published within the same millisecond. When requesting events since the first event's timestamp and not updating the `last_id` param, the 2nd event with the same timestamp would not be returned. See examples below.
+* `last_id` - optional, but must include `since_time` if including this.  This is the last seen event's `id` value.  This is used in conjunction with `since_time` set to the last seen event's timestamp to pick up where the previously seen event left off.  This is necessary to avoid missing events in the scenario where clients get an event but a 2nd event was published within the same millisecond. (fixes issue #19) When requesting events since the first event's timestamp and not updating the `last_id` param, the 2nd event with the same timestamp would not be returned. See examples below.
 
 ### Response JSON
 The response is HTTP 200 with JSON that has one of three forms.
@@ -37,7 +37,7 @@ The response is HTTP 200 with JSON that has one of three forms.
 2. Timeout Message: `{"timeout":"no events before timeout","timestamp":1616210844178}`
 3. Error response: `{"error": "Invalid or missing 'timeout' arg.  Must be 1-110."}`
 
-### Subscibe Examples
+### Subscribe Examples
 
 #### Get New Events
 In this example, `since_time` is not provided so we only ask for new events (published since now).  Note that the response is an array of event objects.
