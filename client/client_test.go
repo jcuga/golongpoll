@@ -108,7 +108,7 @@ func TestClient_Events(t *testing.T) {
 
 		if num == 3 {
 			// Force client to encounter a poll timeout response.
-			// Since client requests a timeout of 1 second, dealying 2 here
+			// Since client requests a timeout of 1 second, delaying 2 here
 			// will trigger the timeout response from server.
 			// There should be no adverse affect on the client and we should
 			// still get the expected events in our channel.
@@ -722,7 +722,7 @@ func TestClient_Publish(t *testing.T) {
 
 		if num == 3 {
 			// Force client to encounter a poll timeout response.
-			// Since client requests a timeout of 1 second, dealying 2 here
+			// Since client requests a timeout of 1 second, delaying 2 here
 			// will trigger the timeout response from server.
 			// There should be no adverse affect on the client and we should
 			// still get the expected events in our channel.

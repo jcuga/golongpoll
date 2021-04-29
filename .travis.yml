@@ -11,6 +11,7 @@ before_install:
   - go get golang.org/x/tools/cmd/cover
 
 script:
+  - go vet ./...
   - go test -v -coverprofile=coverage.txt -covermode=count github.com/jcuga/golongpoll
   - go test -v github.com/jcuga/golongpoll/client
   - go build examples/chatbot/chatbot.go

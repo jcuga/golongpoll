@@ -182,6 +182,7 @@ func Test_eventBuffer_GetEventsSince(t *testing.T) {
 
 // Tests the new, optional (can be nil) lastEventUUID argument
 // that was added to fix issue #19.
+//gocyclo:ignore
 func Test_eventBuffer_GetEventsSince_lastEventUUID(t *testing.T) {
 	testStart := time.Now()
 	buffer := eventBuffer{

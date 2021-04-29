@@ -32,11 +32,11 @@ func main() {
 		log.Fatalf("Failed to create chat longpoll manager: %q\n", err)
 	}
 
-	http.HandleFunc("/", IndexPage)
-	http.HandleFunc("/topic/news", TopicPage("news"))
-	http.HandleFunc("/topic/sports", TopicPage("sports"))
-	http.HandleFunc("/topic/politics", TopicPage("politics"))
-	http.HandleFunc("/topic/humor", TopicPage("humor"))
+	http.HandleFunc("/", indexPage)
+	http.HandleFunc("/topic/news", topicPage("news"))
+	http.HandleFunc("/topic/sports", topicPage("sports"))
+	http.HandleFunc("/topic/politics", topicPage("politics"))
+	http.HandleFunc("/topic/humor", topicPage("humor"))
 	// NOTE: using the plain publish handler.  If one wanted to add
 	// additional behavior like escaping or validating data, one could make a
 	// http handler function that has a closure capturing the longpoll manager
@@ -47,13 +47,7 @@ func main() {
 	http.ListenAndServe(*listenAddress, nil)
 }
 
-type ChatPost struct {
-	DisplayName string `json:"display_name"`
-	Message     string `json:"message"`
-	Topic       string `json:"topic"`
-}
-
-func IndexPage(w http.ResponseWriter, r *http.Request) {
+func indexPage(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, `
 	<html>
 	<head>
@@ -71,7 +65,7 @@ func IndexPage(w http.ResponseWriter, r *http.Request) {
 	</html>`)
 }
 
-func TopicPage(topic string) func(http.ResponseWriter, *http.Request) {
+func topicPage(topic string) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, `
 		<html>

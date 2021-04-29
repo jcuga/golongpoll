@@ -133,7 +133,7 @@ func Test_FilePersistorAddOn_DirectEndToEnd(t *testing.T) {
 
 	// Start a new file persist addon with same filename
 	// to demonstrate able to append to existing events.
-	// NOTE: This time wtih a 2 second flush period.
+	// NOTE: This time with a 2 second flush period.
 	// We'll check file data after a 2+ second dealy to ensure flushed
 	// before calling shutdown.
 	fp, err = NewFilePersistor(filename, 4096, 2)

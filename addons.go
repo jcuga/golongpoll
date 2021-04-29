@@ -1,7 +1,5 @@
 package golongpoll
 
-import ()
-
 // AddOn provides a way to add behavior to longpolling.
 // For example: FilePersistorAddOn in addons/persistence/file.go provides a way
 // to persist events to file to reuse across LongpollManager runs.

@@ -29,14 +29,14 @@ func main() {
 		log.Fatalf("Failed to create manager: %q", err)
 	}
 
-	http.HandleFunc("/", HomePage)
+	http.HandleFunc("/", homePage)
 	http.HandleFunc("/js/client.js", func(w http.ResponseWriter, r *http.Request) {
 		http.ServeFile(w, r, *staticClientJs)
 	})
-	http.HandleFunc("/basic-events", WithBasicAuth(manager.SubscriptionHandler))
-	http.HandleFunc("/basic-publish", WithBasicAuth(manager.PublishHandler))
-	http.HandleFunc("/header-events", WithMockHeaderAuth(manager.SubscriptionHandler))
-	http.HandleFunc("/header-publish", WithMockHeaderAuth(manager.PublishHandler))
+	http.HandleFunc("/basic-events", withBasicAuth(manager.SubscriptionHandler))
+	http.HandleFunc("/basic-publish", withBasicAuth(manager.PublishHandler))
+	http.HandleFunc("/header-events", withMockHeaderAuth(manager.SubscriptionHandler))
+	http.HandleFunc("/header-publish", withMockHeaderAuth(manager.PublishHandler))
 	fmt.Printf("Serving webpage at http://%s\n", *serveAddr)
 
 	go clientWithBasicAuth(*serveAddr)
@@ -45,7 +45,7 @@ func main() {
 	http.ListenAndServe(*serveAddr, nil)
 }
 
-func WithBasicAuth(handler func(http.ResponseWriter, *http.Request)) func(http.ResponseWriter, *http.Request) {
+func withBasicAuth(handler func(http.ResponseWriter, *http.Request)) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		u, p, ok := r.BasicAuth()
 		if !ok {
@@ -71,7 +71,7 @@ func WithBasicAuth(handler func(http.ResponseWriter, *http.Request)) func(http.R
 	}
 }
 
-func WithMockHeaderAuth(handler func(http.ResponseWriter, *http.Request)) func(http.ResponseWriter, *http.Request) {
+func withMockHeaderAuth(handler func(http.ResponseWriter, *http.Request)) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		token := r.Header.Get("X-MOCK-AUTH-TOKEN")
 		if token != "abcdefg123456789" {
@@ -156,7 +156,7 @@ func clientWithMockHeaderAuth(serveAddr string) {
 	}
 }
 
-func HomePage(w http.ResponseWriter, r *http.Request) {
+func homePage(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, `
 	<html>
 	<head>
