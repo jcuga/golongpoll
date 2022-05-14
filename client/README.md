@@ -80,7 +80,7 @@ c.Stop()
 The client itself can optionally publish data as well as subscribe to events.  Simply call `Client.Publish(category string, data interface{})`
 
 ```go
-err: = c.Publish("news", "I am using golongpoll")
+err := c.Publish("news", "I am using golongpoll")
 ```
 
 Publish returns a non-nil error on failure.
