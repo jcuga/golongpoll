@@ -42,7 +42,7 @@ For example:
 ```js
 client.publish("some-category", data,
     function () {
-        // optionally do somethign on success
+        // optionally do something on success
     },
     function(status, resp) {
         // optionally do something with failure http status and response data
