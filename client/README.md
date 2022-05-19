@@ -23,6 +23,7 @@ func main() {
         SubscribeUrl:   *subUrl,
         PublishUrl:     *pubUrl,
         Category:       "some-category",
+        // See ClientOptions go docs for more options
     })
     if err != nil {
         fmt.Println("FAILED TO CREATE LONGPOLL CLIENT: ", err)
@@ -86,6 +87,42 @@ err := c.Publish("news", "I am using golongpoll")
 Publish returns a non-nil error on failure.
 
 Note: to prevent clients from publishing events, one can simply not serve `LongpollManager.PublishHandler`, or wrap the handler in a function that adds auth/validation checks.
+
+### Handling Subscription Failures
+
+Calls to `client.Publish(category, data)` return an `error`.  What about failures when hitting the subscription handler?
+
+Subscription failures can be handled by providing a `ClientOptions.OnFailure` function of type `func(err error) bool`.  This function is invoked when an error occurs attempting a longpoll subscription.  If the callback returns `false` the client stops it's subscription.  For example, to only allow a certain number of failed subscriptions, we use an `OnFailure` handler with a retry counter:
+
+```go
+// Use a closure to capture the retry counter:
+func getOnFailureHandler() func(error) bool {
+	retries := 0
+	return func(err error) bool {
+		retries += 1
+		if retries <= 3 {
+			log.Printf("OnFailure - retry count: %d - keep trying\n", retries)
+			return true
+		}
+
+		log.Printf("OnFailure - retry count: %d - stop trying\n", retries)
+		return false
+	}
+}
+
+// ...
+
+// Use the failure handler:
+opts := ClientOptions{
+    // ...
+    OnFailure:  getOnFailureHandler(),
+}
+c, err := NewClient(opts)
+
+```
+
+Remember, one can also enable logging via `ClientOptions.LoggingEnabled` to see failure logs.
+
 
 ### Configuring basic auth or custom headers
 You can use `ClientOptions.BasicAuthUsername`/`ClientOptions.BasicAuthPassword` or `ClientOptions.ExtraHeaders` which will cause the client to include basic auth or arbitrary HTTP headers in its publish and subscribe http requests.
