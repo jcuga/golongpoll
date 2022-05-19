@@ -7,6 +7,7 @@ Golang long polling library. Makes web pub-sub easy via HTTP long-poll servers a
 * [go client](/client/README.md)
 * [javascript client](/js-client/README.md)
 * [longpoll http api](/HttpLongPollAPI.md) - in case you want to create your own client.
+* [longpoll with gin apps](#long-polling-and-gin)
 
 ## QuickStart
 To create a longpoll server:
@@ -49,3 +50,38 @@ See [golongpoll.Options](https://pkg.go.dev/github.com/jcuga/golongpoll#Options)
 * `AddOn` - optional way to provide custom behavior. The only add-on at the moment is [FilePersistorAddOn](/fileaddon.go) (Usage [example](/examples/filepersist/filepersist.go)). See [AddOn interface](/addons.go) for creating your own custom add-on.
 
 Remember, you don't have to expose `LongpollManager.SubscriptionHandler` and `PublishHandler` directly (or at all).  You can wrap them with your own http handler that adds additional logic or validation before invoking the inner handler.  See the [authentication example](/examples/authentication/auth.go) for how to require auth via header data before those handlers get called.  For publishing, you can also call `manager.Publish()` directly, or wrap the manager via a closure to create a custom http handler that publishes data.
+
+# long polling and gin
+
+Need to add long polling to a Gin HTTP Framework app?  Simply wrap golongpoll's manager pub/sub functions with a `gin.Context` and pass to `router.POST` and `router.GET`:
+
+```go
+package main
+
+import (
+	"net/http"
+
+	"github.com/gin-gonic/gin"
+
+	"github.com/jcuga/golongpoll"
+)
+
+func main() {
+	// Create longpoll manger with default opts
+	manager, err := golongpoll.StartLongpoll(golongpoll.Options{})
+	if err != nil {
+		panic(err)
+	}
+
+	router := gin.Default()
+	router.POST("/pub", wrapWithContext(manager.PublishHandler))
+	router.GET("/sub", wrapWithContext(manager.SubscriptionHandler))
+	router.Run(":8001")
+}
+
+func wrapWithContext(lpHandler func(http.ResponseWriter, *http.Request)) func(*gin.Context) {
+	return func(c *gin.Context) {
+		lpHandler(c.Writer, c.Request)
+	}
+}
+```
