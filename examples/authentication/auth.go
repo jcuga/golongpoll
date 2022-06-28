@@ -48,19 +48,23 @@ func main() {
 func withBasicAuth(handler func(http.ResponseWriter, *http.Request)) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		u, p, ok := r.BasicAuth()
+		realm := "Please enter your username and password for this site"
 		if !ok {
 			fmt.Println("Error parsing basic auth")
 			w.WriteHeader(http.StatusUnauthorized)
+			w.Header().Set("WWW-Authenticate", `Basic realm="`+realm+`"`)
 			return
 		}
 		if u != "user123" {
 			fmt.Printf("Username provided is incorrect: %s\n", u)
 			w.WriteHeader(http.StatusUnauthorized)
+			w.Header().Set("WWW-Authenticate", `Basic realm="`+realm+`"`)
 			return
 		}
 		if p != "pa$$w0rd" {
 			fmt.Printf("Password provided is incorrect: %s\n", u)
 			w.WriteHeader(http.StatusUnauthorized)
+			w.Header().Set("WWW-Authenticate", `Basic realm="`+realm+`"`)
 			return
 		}
 
