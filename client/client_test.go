@@ -404,9 +404,11 @@ func onFailureTestCase(t *testing.T, client *Client) {
 			t.Errorf("Expected nil data, got: %v", e)
 		}
 
-	case <-time.After(5 * time.Second):
+	case <-time.After(15 * time.Second):
 		// Since ReattemptWaitSeconds=1, having 3 retries should be 3s + time to
 		// make bad requests 3x to localhost.
+		// UPDATE: This is brittle! On windows, it actually takes a few seconds before it realizes the connection
+		// fails, so the band-aid is to wait long enough.
 		t.Error("Should have closed channel by now.")
 	}
 }
