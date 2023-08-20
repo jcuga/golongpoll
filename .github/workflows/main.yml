@@ -16,7 +16,6 @@ jobs:
         uses: actions/setup-go@v4
         with:
           go-version: ${{ matrix.go-version }}
-      # You can test your matrix by printing the current Go version
       - name: Display Go version
         run: go version
       - name: Install dependencies
@@ -35,5 +34,8 @@ jobs:
           go build examples/stressor/client/main.go
           go build examples/authentication/auth.go
           go build examples/microchat/microchat.go
-
-      # TODO: upload code coverage results
+      - uses: codecov/codecov-action@v3
+        with:
+          files: ./coverage.txt
+          fail_ci_if_error: true
+          verbose: true
