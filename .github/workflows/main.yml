@@ -1,0 +1,39 @@
+name: Go
+
+on: [push]
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        go-version: [ '1.9', '1.15', '1.21.x' ]
+
+    steps:
+      - uses: actions/checkout@v3
+      - name: Setup Go ${{ matrix.go-version }}
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ matrix.go-version }}
+      # You can test your matrix by printing the current Go version
+      - name: Display Go version
+        run: go version
+      - name: Install dependencies
+        run: |
+          go get .
+          go get golang.org/x/tools/cmd/cover
+      - name: Test library
+        run: |
+          go test -v -coverprofile=coverage.txt -covermode=count github.com/jcuga/golongpoll
+          go test -v github.com/jcuga/golongpoll/client
+      - name: Build examples
+        run: |
+          go build examples/chatbot/chatbot.go
+          go build examples/filepersist/filepersist.go
+          go build examples/stressor/server/main.go
+          go build examples/stressor/client/main.go
+          go build examples/authentication/auth.go
+          go build examples/microchat/microchat.go
+
+      # TODO: upload code coverage results

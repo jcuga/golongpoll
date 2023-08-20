@@ -1,4 +1,6 @@
-# golongpoll [![Build Status](https://travis-ci.com/jcuga/golongpoll.svg?branch=master)](https://travis-ci.com/jcuga/golongpoll) [![codecov](https://codecov.io/gh/jcuga/golongpoll/branch/master/graph/badge.svg)](https://codecov.io/gh/jcuga/golongpoll)  [![GoDoc](https://godoc.org/github.com/jcuga/golongpoll?status.svg)](https://godoc.org/github.com/jcuga/golongpoll) [![Go Report Card](https://goreportcard.com/badge/jcuga/golongpoll)](https://goreportcard.com/report/jcuga/golongpoll)
+
+# golongpoll [![build workflow](https://github.com/jcuga/golongpoll/actions/workflows/main.yml/badge.svg)
+](https://travis-ci.com/jcuga/golongpoll) [![codecov](https://codecov.io/gh/jcuga/golongpoll/branch/master/graph/badge.svg)](https://codecov.io/gh/jcuga/golongpoll)  [![GoDoc](https://godoc.org/github.com/jcuga/golongpoll?status.svg)](https://godoc.org/github.com/jcuga/golongpoll) [![Go Report Card](https://goreportcard.com/badge/jcuga/golongpoll)](https://goreportcard.com/report/jcuga/golongpoll)
 Golang long polling library. Makes web pub-sub easy via HTTP long-poll servers and clients.  Supports golang v1.9 and up.
 
 ## Resources
