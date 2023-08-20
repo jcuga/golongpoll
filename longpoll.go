@@ -3,6 +3,7 @@ package golongpoll
 import (
 	"container/heap"
 	"container/list"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -447,8 +448,15 @@ func getLongPollSubscriptionHandler(maxTimeoutSeconds int, subscriptionRequests 
 		// need to wait around to fulfill a subscription if no one is going to
 		// receive it
 		disconnectNotify := r.Context().Done()
+
+		// issue#30: use context.WithTimeout instead of time.After the timer's channel
+		// can be closed via the context's cancel function when no longer needed.
+		// Previously, the channel would remain for the full timeout http param duration
+		// which is typically 60+ seconds.
+		timeoutCtx, timeoutCancel := context.WithTimeout(context.Background(), time.Duration(timeout)*time.Second)
+
 		select {
-		case <-time.After(time.Duration(timeout) * time.Second):
+		case <-timeoutCtx.Done():
 			// Lets the subscription manager know it can discard this request's
 			// channel.
 			clientTimeouts <- &subscription.clientCategoryPair
@@ -459,6 +467,7 @@ func getLongPollSubscriptionHandler(maxTimeoutSeconds int, subscriptionRequests 
 				io.WriteString(w, "{\"error\": \"json marshaller failed\"}")
 			}
 		case events := <-subscription.Events:
+			timeoutCancel()
 			// Consume event.  Subscription manager will automatically discard
 			// this client's channel upon sending event
 			// NOTE: event is actually []Event
@@ -468,6 +477,7 @@ func getLongPollSubscriptionHandler(maxTimeoutSeconds int, subscriptionRequests 
 				io.WriteString(w, "{\"error\": \"json marshaller failed\"}")
 			}
 		case <-disconnectNotify:
+			timeoutCancel()
 			// Client connection closed before any events occurred and before
 			// the timeout was exceeded.  Tell manager to forget about this
 			// client.
@@ -532,6 +542,9 @@ func (sm *subscriptionManager) run() error {
 	if sm.LoggingEnabled {
 		log.Println("INFO - golongpoll.run - Starting run.")
 	}
+	timerDuration := time.Duration(5) * time.Second
+	timer := time.NewTimer(timerDuration)
+
 	for {
 		// NOTE: we check to see if its time to purge old buffers whenever
 		// something happens or a period of inactivity has occurred.
@@ -539,6 +552,11 @@ func (sm *subscriptionManager) run() error {
 		// select case time.After() but then you'd have concurrency issues
 		// with access to the sm.SubEventBuffer and sm.bufferPriorityQueue objs
 		// So instead of introducing mutexes we have this uglier manual time check calls
+
+		// issue#30: use time.NewTimer with Reset to avoid creating a new timer channel per loop iteration
+		// that lingers (isn't closed) until duration exceeded.
+		timer.Reset(timerDuration)
+
 		select {
 		case newClient := <-sm.clientSubscriptions:
 			sm.handleNewClient(newClient)
@@ -553,7 +571,7 @@ func (sm *subscriptionManager) run() error {
 			}
 			sm.handleNewEvent(event)
 			sm.seeIfTimeToPurgeStaleCategories()
-		case <-time.After(time.Duration(5) * time.Second):
+		case <-timer.C:
 			sm.seeIfTimeToPurgeStaleCategories()
 		case _ = <-sm.Quit:
 			if sm.LoggingEnabled {
