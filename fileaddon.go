@@ -173,7 +173,13 @@ func (fp *FilePersistorAddOn) run() {
 	w := bufio.NewWriterSize(outFile, fp.writeBufferSize)
 	defer w.Flush()
 
+	timerDuration := time.Duration(500) * time.Millisecond
+	timer := time.NewTimer(timerDuration)
+
 	for {
+		// issue#30: use time.NewTimer with Reset to avoid creating a new timer channel per loop iteration
+		// that lingers (isn't closed) until duration exceeded.
+		timer.Reset(timerDuration)
 		select {
 		case event, ok := <-fp.publishedEvents:
 			if !ok {
@@ -203,7 +209,7 @@ func (fp *FilePersistorAddOn) run() {
 				lastFlushTime = time.Now()
 			}
 
-		case <-time.After(time.Duration(500) * time.Millisecond):
+		case <-timer.C:
 			if isTimeToFlush(lastFlushTime, fp.writeFlushPeriodSeconds) {
 				w.Flush()
 				lastFlushTime = time.Now()
